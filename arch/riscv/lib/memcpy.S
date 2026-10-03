@@ -106,5 +106,3 @@ SYM_FUNC_START(__memcpy)
 	ret
 SYM_FUNC_END(__memcpy)
 SYM_FUNC_ALIAS_WEAK(memcpy, __memcpy)
-SYM_FUNC_ALIAS(__pi_memcpy, __memcpy)
-SYM_FUNC_ALIAS(__pi___memcpy, __memcpy)

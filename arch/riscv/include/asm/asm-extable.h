@@ -8,8 +8,6 @@
 #define EX_TYPE_UACCESS_ERR_ZERO	3
 #define EX_TYPE_LOAD_UNALIGNED_ZEROPAD	4
 
-#ifdef CONFIG_MMU
-
 #ifdef __ASSEMBLER__
 
 #define __ASM_EXTABLE_RAW(insn, fixup, type, data)	\
@@ -78,9 +76,5 @@
 			  ")")
 
 #endif /* __ASSEMBLER__ */
-
-#else /* CONFIG_MMU */
-	#define _ASM_EXTABLE_UACCESS_ERR(insn, fixup, err)
-#endif /* CONFIG_MMU */
 
 #endif /* __ASM_ASM_EXTABLE_H */

@@ -28,9 +28,6 @@
 static void show_pte(unsigned long addr)
 {
 	pgd_t *pgdp, pgd;
-	p4d_t *p4dp, p4d;
-	pud_t *pudp, pud;
-	pmd_t *pmdp, pmd;
 	pte_t *ptep, pte;
 	struct mm_struct *mm = current->mm;
 
@@ -43,34 +40,16 @@ static void show_pte(unsigned long addr)
 
 	pgdp = pgd_offset(mm, addr);
 	pgd = pgdp_get(pgdp);
-	pr_alert("[%016lx] pgd=%016lx", addr, pgd_val(pgd));
+	pr_alert("[%08lx] pgd=%08lx", addr, pgd_val(pgd));
 	if (pgd_none(pgd) || pgd_bad(pgd) || pgd_leaf(pgd))
 		goto out;
 
-	p4dp = p4d_offset(pgdp, addr);
-	p4d = p4dp_get(p4dp);
-	pr_cont(", p4d=%016lx", p4d_val(p4d));
-	if (p4d_none(p4d) || p4d_bad(p4d) || p4d_leaf(p4d))
-		goto out;
-
-	pudp = pud_offset(p4dp, addr);
-	pud = pudp_get(pudp);
-	pr_cont(", pud=%016lx", pud_val(pud));
-	if (pud_none(pud) || pud_bad(pud) || pud_leaf(pud))
-		goto out;
-
-	pmdp = pmd_offset(pudp, addr);
-	pmd = pmdp_get(pmdp);
-	pr_cont(", pmd=%016lx", pmd_val(pmd));
-	if (pmd_none(pmd) || pmd_bad(pmd) || pmd_leaf(pmd))
-		goto out;
-
-	ptep = pte_offset_map(pmdp, addr);
+	ptep = pte_offset_map((pmd_t *)pgdp, addr);
 	if (!ptep)
 		goto out;
 
 	pte = ptep_get(ptep);
-	pr_cont(", pte=%016lx", pte_val(pte));
+	pr_cont(", pte=%08lx", pte_val(pte));
 	pte_unmap(ptep);
 out:
 	pr_cont("\n");
@@ -308,8 +287,7 @@ void handle_page_fault(struct pt_regs *regs)
 	 * only copy the information from the master page table,
 	 * nothing more.
 	 */
-	if ((!IS_ENABLED(CONFIG_MMU) || !IS_ENABLED(CONFIG_64BIT)) &&
-	    unlikely(addr >= VMALLOC_START && addr < VMALLOC_END)) {
+	if (unlikely(addr >= VMALLOC_START && addr < VMALLOC_END)) {
 		vmalloc_fault(regs, code, addr);
 		return;
 	}

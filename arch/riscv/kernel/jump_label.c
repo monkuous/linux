@@ -11,9 +11,9 @@
 #include <asm/bug.h>
 #include <asm/cacheflush.h>
 #include <asm/text-patching.h>
-#include <asm/insn-def.h>
 
 #define RISCV_INSN_JAL 0x0000006fU
+#define RISCV_INSN_NOP 0x00000013U
 
 bool arch_jump_label_transform_queue(struct jump_entry *entry,
 				     enum jump_label_type type)
@@ -33,7 +33,7 @@ bool arch_jump_label_transform_queue(struct jump_entry *entry,
 			(((u32)offset & GENMASK(10,  1)) << (21 -  1)) |
 			(((u32)offset & GENMASK(20, 20)) << (31 - 20));
 	} else {
-		insn = RISCV_INSN_NOP4;
+		insn = RISCV_INSN_NOP;
 	}
 
 	if (early_boot_irqs_disabled) {

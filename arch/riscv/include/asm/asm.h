@@ -12,19 +12,7 @@
 #define __ASM_STR(x)	#x
 #endif
 
-#ifdef CONFIG_AS_HAS_INSN
-#define ASM_INSN_I(__x) ".insn " __x
-#else
-#define ASM_INSN_I(__x) ".4byte " __x
-#endif
-
-#if __riscv_xlen == 64
-#define __REG_SEL(a, b)	__ASM_STR(a)
-#elif __riscv_xlen == 32
 #define __REG_SEL(a, b)	__ASM_STR(b)
-#else
-#error "Unexpected __riscv_xlen"
-#endif
 
 #define REG_L		__REG_SEL(ld, lw)
 #define REG_S		__REG_SEL(sd, sw)
@@ -36,17 +24,7 @@
 #define SRLI		__REG_SEL(srliw, srli)
 #define SLLI		__REG_SEL(slliw, slli)
 
-#if __SIZEOF_POINTER__ == 8
-#ifdef __ASSEMBLER__
-#define RISCV_PTR		.dword
-#define RISCV_SZPTR		8
-#define RISCV_LGPTR		3
-#else
-#define RISCV_PTR		".dword"
-#define RISCV_SZPTR		"8"
-#define RISCV_LGPTR		"3"
-#endif
-#elif __SIZEOF_POINTER__ == 4
+#if __SIZEOF_POINTER__ == 4
 #ifdef __ASSEMBLER__
 #define RISCV_PTR		.word
 #define RISCV_SZPTR		4
@@ -111,11 +89,6 @@
 	REG_L \dst, 0(\dst)
 .endm
 
-#ifdef CONFIG_SHADOW_CALL_STACK
-/* gp is used as the shadow call stack pointer instead */
-.macro load_global_pointer
-.endm
-#else
 /* load __global_pointer to gp */
 .macro load_global_pointer
 .option push
@@ -123,7 +96,6 @@
 	la gp, __global_pointer$
 .option pop
 .endm
-#endif /* CONFIG_SHADOW_CALL_STACK */
 
 	/* save all GPs except x1 ~ x5 */
 	.macro save_from_x6_to_x31

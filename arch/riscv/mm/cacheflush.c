@@ -3,15 +3,11 @@
  * Copyright (C) 2017 SiFive
  */
 
-#include <linux/acpi.h>
 #include <linux/of.h>
 #include <linux/prctl.h>
-#include <asm/acpi.h>
 #include <asm/cacheflush.h>
 
 #ifdef CONFIG_SMP
-
-#include <asm/sbi.h>
 
 static void ipi_remote_fence_i(void *info)
 {
@@ -37,10 +33,7 @@ void flush_icache_all(void)
 	 */
 	RISCV_FENCE(w, o);
 
-	if (riscv_use_sbi_for_rfence())
-		sbi_remote_fence_i(NULL);
-	else
-		on_each_cpu(ipi_remote_fence_i, NULL, 1);
+	on_each_cpu(ipi_remote_fence_i, NULL, 1);
 }
 EXPORT_SYMBOL(flush_icache_all);
 
@@ -85,8 +78,6 @@ void flush_icache_mm(struct mm_struct *mm, bool local)
 		 * with flush_icache_deferred().
 		 */
 		smp_mb();
-	} else if (riscv_use_sbi_for_rfence()) {
-		sbi_remote_fence_i(&others);
 	} else {
 		on_each_cpu_mask(&others, ipi_remote_fence_i, NULL, 1);
 	}
@@ -96,7 +87,6 @@ void flush_icache_mm(struct mm_struct *mm, bool local)
 
 #endif /* CONFIG_SMP */
 
-#ifdef CONFIG_MMU
 void flush_icache_pte(struct mm_struct *mm, pte_t pte)
 {
 	struct folio *folio = page_folio(pte_page(pte));
@@ -106,16 +96,9 @@ void flush_icache_pte(struct mm_struct *mm, pte_t pte)
 		set_bit(PG_dcache_clean, &folio->flags.f);
 	}
 }
-#endif /* CONFIG_MMU */
 
 unsigned int riscv_cbom_block_size;
 EXPORT_SYMBOL_GPL(riscv_cbom_block_size);
-
-unsigned int riscv_cboz_block_size;
-EXPORT_SYMBOL_GPL(riscv_cboz_block_size);
-
-unsigned int riscv_cbop_block_size;
-EXPORT_SYMBOL_GPL(riscv_cbop_block_size);
 
 static void __init cbo_get_block_size(struct device_node *node,
 				      const char *name, u32 *block_size,
@@ -141,39 +124,18 @@ static void __init cbo_get_block_size(struct device_node *node,
 
 void __init riscv_init_cbo_blocksizes(void)
 {
-	unsigned long cbom_hartid, cboz_hartid, cbop_hartid;
-	u32 cbom_block_size = 0, cboz_block_size = 0, cbop_block_size = 0;
+	unsigned long cbom_hartid;
+	u32 cbom_block_size = 0;
 	struct device_node *node;
-	struct acpi_table_header *rhct;
-	acpi_status status;
 
-	if (acpi_disabled) {
-		for_each_of_cpu_node(node) {
-			/* set block-size for cbom and/or cboz extension if available */
-			cbo_get_block_size(node, "riscv,cbom-block-size",
-					   &cbom_block_size, &cbom_hartid);
-			cbo_get_block_size(node, "riscv,cboz-block-size",
-					   &cboz_block_size, &cboz_hartid);
-			cbo_get_block_size(node, "riscv,cbop-block-size",
-					   &cbop_block_size, &cbop_hartid);
-		}
-	} else {
-		status = acpi_get_table(ACPI_SIG_RHCT, 0, &rhct);
-		if (ACPI_FAILURE(status))
-			return;
-
-		acpi_get_cbo_block_size(rhct, &cbom_block_size, &cboz_block_size, &cbop_block_size);
-		acpi_put_table((struct acpi_table_header *)rhct);
+	for_each_of_cpu_node(node) {
+		/* set block-size for cbom and/or cboz extension if available */
+		cbo_get_block_size(node, "riscv,cbom-block-size",
+				   &cbom_block_size, &cbom_hartid);
 	}
 
 	if (cbom_block_size)
 		riscv_cbom_block_size = cbom_block_size;
-
-	if (cboz_block_size)
-		riscv_cboz_block_size = cboz_block_size;
-
-	if (cbop_block_size)
-		riscv_cbop_block_size = cbop_block_size;
 }
 
 #ifdef CONFIG_SMP

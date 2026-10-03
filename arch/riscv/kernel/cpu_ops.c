@@ -16,11 +16,6 @@
 const struct cpu_operations *cpu_ops __ro_after_init = &cpu_ops_spinwait;
 
 extern const struct cpu_operations cpu_ops_sbi;
-#ifndef CONFIG_RISCV_BOOT_SPINWAIT
-const struct cpu_operations cpu_ops_spinwait = {
-	.cpu_start	= NULL,
-};
-#endif
 
 void __init cpu_set_ops(void)
 {

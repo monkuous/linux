@@ -15,20 +15,14 @@
 #
 
 OBJCOPYFLAGS_Image :=-O binary -R .note -R .note.gnu.build-id -R .comment -S
-OBJCOPYFLAGS_loader.bin :=-O binary
 
-targets := Image Image.* loader loader.o loader.lds loader.bin
+targets := Image Image.*
 
 $(obj)/Image: vmlinux FORCE
 	$(call if_changed,objcopy)
 
 $(obj)/Image.gz: $(obj)/Image FORCE
 	$(call if_changed,gzip)
-
-$(obj)/loader.o: $(src)/loader.S $(obj)/Image
-
-$(obj)/loader: $(obj)/loader.o $(obj)/Image $(obj)/loader.lds FORCE
-	$(Q)$(LD) -T $(obj)/loader.lds -o $@ $(obj)/loader.o
 
 $(obj)/Image.bz2: $(obj)/Image FORCE
 	$(call if_changed,bzip2)
@@ -47,12 +41,3 @@ $(obj)/Image.zst: $(obj)/Image FORCE
 
 $(obj)/Image.xz: $(obj)/Image FORCE
 	$(call if_changed,xzkern)
-
-$(obj)/loader.bin: $(obj)/loader FORCE
-	$(call if_changed,objcopy)
-
-EFI_ZBOOT_PAYLOAD	:= Image
-EFI_ZBOOT_BFD_TARGET	:= elf$(BITS)-littleriscv
-EFI_ZBOOT_MACH_TYPE	:= RISCV$(BITS)
-
-include $(srctree)/drivers/firmware/efi/libstub/Makefile.zboot

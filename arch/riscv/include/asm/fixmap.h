@@ -11,7 +11,6 @@
 #include <linux/pgtable.h>
 #include <asm/page.h>
 
-#ifdef CONFIG_MMU
 /*
  * Here we define all the compile-time 'special' virtual addresses.
  * The point is to have a constant address at compile time, but to
@@ -32,8 +31,6 @@ enum fixed_addresses {
 	/* Below fixmaps will be mapped using fixmap_pte */
 	FIX_PTE,
 	FIX_PMD,
-	FIX_PUD,
-	FIX_P4D,
 	FIX_TEXT_POKE1,
 	FIX_TEXT_POKE0,
 	FIX_EARLYCON_MEM_BASE,
@@ -60,5 +57,4 @@ extern void __set_fixmap(enum fixed_addresses idx,
 
 #include <asm-generic/fixmap.h>
 
-#endif /* CONFIG_MMU */
 #endif /* _ASM_RISCV_FIXMAP_H */

@@ -6,11 +6,7 @@
 .text
 .global test_sub64
 test_sub64:
-#ifdef CONFIG_32BIT
 	lw	a0, sub64
-#else
-	ld	a0, sub64
-#endif
 	addi	a0, a0, -32
 	ret
 first:

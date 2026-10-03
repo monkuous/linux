@@ -313,5 +313,3 @@ SYM_FUNC_START(__memmove)
 
 SYM_FUNC_END(__memmove)
 SYM_FUNC_ALIAS_WEAK(memmove, __memmove)
-SYM_FUNC_ALIAS(__pi_memmove, __memmove)
-SYM_FUNC_ALIAS(__pi___memmove, __memmove)

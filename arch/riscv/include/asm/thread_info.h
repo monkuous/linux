@@ -13,12 +13,7 @@
 #include <linux/sizes.h>
 
 /* thread information allocation */
-#ifdef CONFIG_KASAN
-#define KASAN_STACK_ORDER	1
-#else
-#define KASAN_STACK_ORDER	0
-#endif
-#define THREAD_SIZE_ORDER	(CONFIG_THREAD_SIZE_ORDER + KASAN_STACK_ORDER)
+#define THREAD_SIZE_ORDER	1
 #define THREAD_SIZE		(PAGE_SIZE << THREAD_SIZE_ORDER)
 
 /*
@@ -26,11 +21,7 @@
  * checking sp & (1 << THREAD_SHIFT), which we can do cheaply in the entry
  * assembly.
  */
-#ifdef CONFIG_VMAP_STACK
-#define THREAD_ALIGN            (2 * THREAD_SIZE)
-#else
 #define THREAD_ALIGN            THREAD_SIZE
-#endif
 
 #define THREAD_SHIFT            (PAGE_SHIFT + THREAD_SIZE_ORDER)
 #define OVERFLOW_STACK_SIZE     SZ_4K
@@ -62,29 +53,7 @@ struct thread_info {
 	long			user_sp;	/* User stack pointer */
 	int			cpu;
 	unsigned long		syscall_work;	/* SYSCALL_WORK_ flags */
-#ifdef CONFIG_SHADOW_CALL_STACK
-	void			*scs_base;
-	void			*scs_sp;
-#endif
-#ifdef CONFIG_64BIT
-	/*
-	 * Used in handle_exception() to save a0, a1 and a2 before knowing if we
-	 * can access the kernel stack.
-	 */
-	unsigned long		a0, a1, a2;
-#endif
-#ifdef CONFIG_RISCV_USER_CFI
-	struct cfi_state	user_cfi_state;
-#endif
 };
-
-#ifdef CONFIG_SHADOW_CALL_STACK
-#define INIT_SCS							\
-	.scs_base	= init_shadow_call_stack,			\
-	.scs_sp		= init_shadow_call_stack,
-#else
-#define INIT_SCS
-#endif
 
 /*
  * macros/functions for gaining access to the thread information structure
@@ -95,7 +64,6 @@ struct thread_info {
 {						\
 	.flags		= 0,			\
 	.preempt_count	= INIT_PREEMPT_COUNT,	\
-	INIT_SCS				\
 }
 
 void arch_release_task_struct(struct task_struct *tsk);
@@ -118,10 +86,5 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src);
 #define HAVE_TIF_RESTORE_SIGMASK
 
 #include <asm-generic/thread_info_tif.h>
-
-#define TIF_32BIT			16	/* compat-mode 32bit process */
-#define TIF_RISCV_V_DEFER_RESTORE	17	/* restore Vector before returning to user */
-
-#define _TIF_RISCV_V_DEFER_RESTORE	BIT(TIF_RISCV_V_DEFER_RESTORE)
 
 #endif /* _ASM_RISCV_THREAD_INFO_H */

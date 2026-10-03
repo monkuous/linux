@@ -72,19 +72,9 @@ VERSION
 	LINUX_4.15 {
 	global:
 		__vdso_rt_sigreturn;
-#ifdef HAS_VGETTIMEOFDAY
-		__vdso_gettimeofday;
-		__vdso_clock_gettime;
-		__vdso_clock_getres;
-#endif
 		__vdso_getcpu;
 		__vdso_flush_icache;
-#ifndef COMPAT_VDSO
 		__vdso_riscv_hwprobe;
-#endif
-#if defined(CONFIG_VDSO_GETRANDOM) && !defined(COMPAT_VDSO)
-		__vdso_getrandom;
-#endif
 	local: *;
 	};
 }

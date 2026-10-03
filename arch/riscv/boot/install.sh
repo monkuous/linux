@@ -21,7 +21,7 @@ set -e
 
 case "${2##*/}" in
 # Compressed install
-Image.*|vmlinuz.efi)
+Image.*)
   echo "Installing compressed kernel"
   base=vmlinuz
   ;;

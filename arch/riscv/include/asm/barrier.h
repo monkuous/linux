@@ -66,20 +66,6 @@ do {									\
 	___p1;								\
 })
 
-#ifdef CONFIG_RISCV_ISA_ZAWRS
-#define smp_cond_load_relaxed(ptr, cond_expr) ({			\
-	typeof(ptr) __PTR = (ptr);					\
-	__unqual_scalar_typeof(*ptr) VAL;				\
-	for (;;) {							\
-		VAL = READ_ONCE(*__PTR);				\
-		if (cond_expr)						\
-			break;						\
-		__cmpwait_relaxed(ptr, VAL);				\
-	}								\
-	(typeof(*ptr))VAL;						\
-})
-#endif
-
 #include <asm-generic/barrier.h>
 
 #endif /* __ASSEMBLER__ */

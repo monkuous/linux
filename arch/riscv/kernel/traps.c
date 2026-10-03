@@ -24,20 +24,18 @@
 
 #include <asm/asm-prototypes.h>
 #include <asm/bug.h>
-#include <asm/cfi.h>
 #include <asm/csr.h>
 #include <asm/processor.h>
 #include <asm/ptrace.h>
 #include <asm/syscall.h>
 #include <asm/thread_info.h>
-#include <asm/vector.h>
 #include <asm/irq_stack.h>
 
 int show_unhandled_signals = 1;
 
 static DEFINE_RAW_SPINLOCK(die_lock);
 
-static int copy_code(struct pt_regs *regs, u16 *val, const u16 *insns)
+static int copy_code(struct pt_regs *regs, u32 *val, const u32 *insns)
 {
 	const void __user *uaddr = (__force const void __user *)insns;
 
@@ -53,16 +51,16 @@ static int copy_code(struct pt_regs *regs, u16 *val, const u16 *insns)
 
 static void dump_instr(const char *loglvl, struct pt_regs *regs)
 {
-	char str[sizeof("0000 ") * 12 + 2 + 1], *p = str;
-	const u16 *insns = (u16 *)instruction_pointer(regs);
+	char str[sizeof("00000000 ") * 6 + 2 + 1], *p = str;
+	const u32 *insns = (u32 *)instruction_pointer(regs);
 	long bad;
-	u16 val;
+	u32 val;
 	int i;
 
-	for (i = -10; i < 2; i++) {
+	for (i = -5; i < 1; i++) {
 		bad = copy_code(regs, &val, &insns[i]);
 		if (!bad) {
-			p += sprintf(p, i == 0 ? "(%04hx) " : "%04hx ", val);
+			p += sprintf(p, i == 0 ? "(%08x) " : "%08x ", val);
 		} else {
 			printk("%sCode: Unable to access instruction at 0x%px.\n",
 			       loglvl, &insns[i]);
@@ -160,8 +158,6 @@ asmlinkage __visible __trap_section void name(struct pt_regs *regs)		\
 
 DO_ERROR_INFO(do_trap_unknown,
 	SIGILL, ILL_ILLTRP, "unknown exception");
-DO_ERROR_INFO(do_trap_hardware_error,
-	SIGBUS, BUS_MCEERR_AR, "hardware error");
 DO_ERROR_INFO(do_trap_insn_misaligned,
 	SIGBUS, BUS_ADRALN, "instruction address misaligned");
 DO_ERROR_INFO(do_trap_insn_fault,
@@ -169,16 +165,12 @@ DO_ERROR_INFO(do_trap_insn_fault,
 
 asmlinkage __visible __trap_section void do_trap_insn_illegal(struct pt_regs *regs)
 {
-	bool handled;
-
 	if (user_mode(regs)) {
 		irqentry_enter_from_user_mode(regs);
 		local_irq_enable();
 
-		handled = riscv_v_first_use_handler(regs);
-		if (!handled)
-			do_trap_error(regs, SIGILL, ILL_ILLOPC, regs->epc,
-				      "Oops - illegal instruction");
+		do_trap_error(regs, SIGILL, ILL_ILLOPC, regs->epc,
+			      "Oops - illegal instruction");
 
 		local_irq_disable();
 		irqentry_exit_to_user_mode(regs);
@@ -253,16 +245,6 @@ DO_ERROR_INFO(do_trap_ecall_s,
 DO_ERROR_INFO(do_trap_ecall_m,
 	SIGILL, ILL_ILLTRP, "environment call from M-mode");
 
-static inline unsigned long get_break_insn_length(unsigned long pc)
-{
-	bug_insn_t insn;
-
-	if (get_kernel_nofault(insn, (bug_insn_t *)pc))
-		return 0;
-
-	return GET_INSN_LENGTH(insn);
-}
-
 static bool probe_single_step_handler(struct pt_regs *regs)
 {
 	bool user = user_mode(regs);
@@ -296,9 +278,8 @@ void handle_break(struct pt_regs *regs)
 								== NOTIFY_STOP)
 		return;
 #endif
-	else if (report_bug(regs->epc, regs) == BUG_TRAP_TYPE_WARN ||
-		 handle_cfi_failure(regs) == BUG_TRAP_TYPE_WARN)
-		regs->epc += get_break_insn_length(regs->epc);
+	else if (report_bug(regs->epc, regs) == BUG_TRAP_TYPE_WARN)
+		regs->epc += INSN_LENGTH;
 	else
 		die(regs, "Kernel BUG");
 }
@@ -333,8 +314,6 @@ void do_trap_ecall_u(struct pt_regs *regs)
 		regs->orig_a0 = regs->a0;
 		regs->a0 = -ENOSYS;
 
-		riscv_v_vstate_discard(regs);
-
 		if (likely(syscall_enter_from_user_mode_randomize_stack(regs, &syscall))) {
 			if (syscall >= 0 && syscall < NR_syscalls) {
 				syscall = array_index_nospec(syscall, NR_syscalls);
@@ -352,62 +331,6 @@ void do_trap_ecall_u(struct pt_regs *regs)
 	}
 
 }
-
-#define CFI_TVAL_FCFI_CODE	2
-#define CFI_TVAL_BCFI_CODE	3
-/* handle cfi violations */
-bool handle_user_cfi_violation(struct pt_regs *regs)
-{
-	unsigned long tval = csr_read(CSR_TVAL);
-	bool is_fcfi = (tval == CFI_TVAL_FCFI_CODE && cpu_supports_indirect_br_lp_instr());
-	bool is_bcfi = (tval == CFI_TVAL_BCFI_CODE && cpu_supports_shadow_stack());
-
-	/*
-	 * Handle uprobe event first. The probe point can be a valid target
-	 * of indirect jumps or calls, in this case, forward cfi violation
-	 * will be triggered instead of breakpoint exception. Clear ELP flag
-	 * on sstatus image as well to avoid recurring fault.
-	 */
-	if (is_fcfi && probe_breakpoint_handler(regs)) {
-		regs->status &= ~SR_ELP;
-		return true;
-	}
-
-	if (is_fcfi || is_bcfi) {
-		do_trap_error(regs, SIGSEGV, SEGV_CPERR, regs->epc,
-			      "Oops - control flow violation");
-		return true;
-	}
-
-	return false;
-}
-
-/*
- * software check exception is defined with risc-v cfi spec. Software check
- * exception is raised when:
- * a) An indirect branch doesn't land on 4 byte aligned PC or `lpad`
- *    instruction or `label` value programmed in `lpad` instr doesn't
- *    match with value setup in `x7`. reported code in `xtval` is 2.
- * b) `sspopchk` instruction finds a mismatch between top of shadow stack (ssp)
- *    and x1/x5. reported code in `xtval` is 3.
- */
-asmlinkage __visible __trap_section void do_trap_software_check(struct pt_regs *regs)
-{
-	if (user_mode(regs)) {
-		irqentry_enter_from_user_mode(regs);
-
-		/* not a cfi violation, then merge into flow of unknown trap handler */
-		if (!handle_user_cfi_violation(regs))
-			do_trap_unknown(regs);
-
-		irqentry_exit_to_user_mode(regs);
-	} else {
-		/* sw check exception coming from kernel is a bug in kernel */
-		die(regs, "Kernel BUG");
-	}
-}
-
-#ifdef CONFIG_MMU
 asmlinkage __visible noinstr void do_page_fault(struct pt_regs *regs)
 {
 	irqentry_state_t state = irqentry_enter(regs);
@@ -418,7 +341,6 @@ asmlinkage __visible noinstr void do_page_fault(struct pt_regs *regs)
 
 	irqentry_exit(regs, state);
 }
-#endif
 
 static void noinstr handle_riscv_irq(struct pt_regs *regs)
 {
@@ -452,34 +374,6 @@ int is_valid_bugaddr(unsigned long pc)
 		return 0;
 	if (get_kernel_nofault(insn, (bug_insn_t *)pc))
 		return 0;
-	if ((insn & __INSN_LENGTH_MASK) == __INSN_LENGTH_32)
-		return (insn == __BUG_INSN_32);
-	else
-		return ((insn & __COMPRESSED_INSN_MASK) == __BUG_INSN_16);
+	return (insn == __BUG_INSN);
 }
 #endif /* CONFIG_GENERIC_BUG */
-
-#ifdef CONFIG_VMAP_STACK
-DEFINE_PER_CPU(unsigned long [OVERFLOW_STACK_SIZE/sizeof(long)],
-		overflow_stack)__aligned(16);
-
-asmlinkage void handle_bad_stack(struct pt_regs *regs)
-{
-	unsigned long tsk_stk = (unsigned long)current->stack;
-	unsigned long ovf_stk = (unsigned long)this_cpu_ptr(overflow_stack);
-
-	console_verbose();
-
-	pr_emerg("Insufficient stack space to handle exception!\n");
-	pr_emerg("Task stack:     [0x%016lx..0x%016lx]\n",
-			tsk_stk, tsk_stk + THREAD_SIZE);
-	pr_emerg("Overflow stack: [0x%016lx..0x%016lx]\n",
-			ovf_stk, ovf_stk + OVERFLOW_STACK_SIZE);
-
-	__show_regs(regs);
-	panic("Kernel stack overflow");
-
-	for (;;)
-		wait_for_interrupt();
-}
-#endif

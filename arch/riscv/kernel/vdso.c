@@ -29,9 +29,6 @@ struct __vdso_info {
 };
 
 static struct __vdso_info vdso_info;
-#ifdef CONFIG_COMPAT
-static struct __vdso_info compat_vdso_info;
-#endif
 
 static int vdso_mremap(const struct vm_special_mapping *sm,
 		       struct vm_area_struct *new_vma)
@@ -80,33 +77,9 @@ static struct __vdso_info vdso_info __ro_after_init = {
 	.cm = &rv_vdso_map,
 };
 
-#ifdef CONFIG_COMPAT
-static struct vm_special_mapping rv_compat_vdso_map __ro_after_init = {
-	.name   = "[vdso]",
-	.mremap = vdso_mremap,
-};
-
-static struct __vdso_info compat_vdso_info __ro_after_init = {
-	.name = "compat_vdso",
-	.vdso_code_start = compat_vdso_start,
-	.vdso_code_end = compat_vdso_end,
-	.cm = &rv_compat_vdso_map,
-};
-#endif
-
 static int __init vdso_init(void)
 {
-	/* Hart implements zimop, expose cfi compiled vdso */
-	if (IS_ENABLED(CONFIG_RISCV_USER_CFI) &&
-	    riscv_has_extension_unlikely(RISCV_ISA_EXT_ZIMOP)) {
-		vdso_info.vdso_code_start = vdso_cfi_start;
-		vdso_info.vdso_code_end = vdso_cfi_end;
-	}
-
 	__vdso_init(&vdso_info);
-#ifdef CONFIG_COMPAT
-	__vdso_init(&compat_vdso_info);
-#endif
 
 	return 0;
 }
@@ -153,24 +126,6 @@ up_fail:
 	mm->context.vdso = NULL;
 	return PTR_ERR(ret);
 }
-
-#ifdef CONFIG_COMPAT
-int compat_arch_setup_additional_pages(struct linux_binprm *bprm,
-				       int uses_interp)
-{
-	struct mm_struct *mm = current->mm;
-	int ret;
-
-	if (mmap_write_lock_killable(mm))
-		return -EINTR;
-
-	ret = __setup_additional_pages(mm, bprm, uses_interp,
-							&compat_vdso_info);
-	mmap_write_unlock(mm);
-
-	return ret;
-}
-#endif
 
 int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 {

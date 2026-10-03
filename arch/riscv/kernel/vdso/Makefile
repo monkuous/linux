@@ -5,44 +5,22 @@
 include $(srctree)/lib/vdso/Makefile.include
 # Symbols present in the vdso
 vdso-syms  = rt_sigreturn
-ifdef CONFIG_64BIT
-vdso-syms += vgettimeofday
-endif
 vdso-syms += getcpu
 vdso-syms += flush_icache
 vdso-syms += hwprobe
 vdso-syms += sys_hwprobe
 
-ifdef CONFIG_VDSO_GETRANDOM
-vdso-syms += getrandom
-endif
-
-ifdef VDSO_CFI_BUILD
-CFI_MARCH = _zicfilp_zicfiss
-CFI_FULL = -fcf-protection=full
-CFI_SUFFIX = -cfi
-OFFSET_SUFFIX = _cfi
-ccflags-y += -DVDSO_CFI=1
-asflags-y += -DVDSO_CFI=1
-endif
-
 # Files to link into the vdso
 obj-vdso = $(patsubst %, %.o, $(vdso-syms)) note.o
-
-ifdef CONFIG_VDSO_GETRANDOM
-obj-vdso += vgetrandom-chacha.o
-endif
 
 ccflags-y := -fno-stack-protector
 ccflags-y += -DDISABLE_BRANCH_PROFILING
 ccflags-y += -fno-builtin
 ccflags-y += $(CONFIG_CC_OPT_INLINE_MEMSET)
-ccflags-y += $(KBUILD_BASE_ISA)$(CFI_MARCH)
-ccflags-y += $(CFI_FULL)
-asflags-y += $(KBUILD_BASE_ISA)$(CFI_MARCH)
-asflags-y += $(CFI_FULL)
+ccflags-y += $(KBUILD_BASE_ISA)
+asflags-y += $(KBUILD_BASE_ISA)
 
-ccflags-remove-y += $(CC_FLAGS_FTRACE) $(CC_FLAGS_SCS) $(CC_FLAGS_LTO)
+ccflags-remove-y += $(CC_FLAGS_FTRACE) $(CC_FLAGS_LTO)
 
 ifneq ($(c-gettimeofday-y),)
   CFLAGS_vgettimeofday.o += -fPIC -include $(c-gettimeofday-y)
@@ -55,21 +33,18 @@ endif
 CFLAGS_hwprobe.o += -fPIC
 
 # Build rules
-vdso_offsets := vdso$(if $(VDSO_CFI_BUILD),$(CFI_SUFFIX),)-offsets.h
-vdso_o := vdso$(if $(VDSO_CFI_BUILD),$(CFI_SUFFIX),).o
-vdso_so := vdso$(if $(VDSO_CFI_BUILD),$(CFI_SUFFIX),).so
-vdso_so_dbg := vdso$(if $(VDSO_CFI_BUILD),$(CFI_SUFFIX),).so.dbg
+vdso_offsets := vdso-offsets.h
+vdso_o := vdso.o
+vdso_so := vdso.so
+vdso_so_dbg := vdso.so.dbg
 vdso_lds := vdso.lds
 
 targets := $(obj-vdso) $(vdso_so) $(vdso_so_dbg) $(vdso_lds)
 
 obj-vdso := $(addprefix $(obj)/, $(obj-vdso))
 
-obj-y += vdso$(if $(VDSO_CFI_BUILD),$(CFI_SUFFIX),).o
+obj-y += vdso.o
 CPPFLAGS_$(vdso_lds) += -P -C -U$(ARCH)
-ifneq ($(filter vgettimeofday, $(vdso-syms)),)
-CPPFLAGS_$(vdso_lds) += -DHAS_VGETTIMEOFDAY
-endif
 
 # Force dependency
 $(obj)/$(vdso_o): $(obj)/$(vdso_so)

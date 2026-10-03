@@ -8,7 +8,6 @@
 #include <linux/string.h>
 #include <linux/sched/task_stack.h>
 #include <asm/cpu_ops.h>
-#include <asm/sbi.h>
 #include <asm/smp.h>
 
 #include "head.h"

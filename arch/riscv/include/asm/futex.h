@@ -14,10 +14,6 @@
 #include <asm/asm-extable.h>
 
 /* We don't even really need the extable code, but for now keep it simple */
-#ifndef CONFIG_MMU
-#define __enable_user_access()		do { } while (0)
-#define __disable_user_access()		do { } while (0)
-#endif
 
 #define __futex_atomic_op(insn, ret, oldval, uaddr, oparg)	\
 {								\

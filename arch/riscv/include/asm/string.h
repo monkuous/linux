@@ -19,7 +19,6 @@ extern asmlinkage void *__memcpy(void *, const void *, size_t);
 extern asmlinkage void *memmove(void *, const void *, size_t);
 extern asmlinkage void *__memmove(void *, const void *, size_t);
 
-#if !(defined(CONFIG_KASAN_GENERIC) || defined(CONFIG_KASAN_SW_TAGS))
 #define __HAVE_ARCH_STRCMP
 extern asmlinkage int strcmp(const char *cs, const char *ct);
 
@@ -37,17 +36,5 @@ extern asmlinkage char *strchr(const char *, int);
 
 #define __HAVE_ARCH_STRRCHR
 extern asmlinkage char *strrchr(const char *, int);
-#endif
 
-/* For those files which don't want to check by kasan. */
-#if defined(CONFIG_KASAN) && !defined(__SANITIZE_ADDRESS__)
-#define memcpy(dst, src, len) __memcpy(dst, src, len)
-#define memset(s, c, n) __memset(s, c, n)
-#define memmove(dst, src, len) __memmove(dst, src, len)
-
-#ifndef __NO_FORTIFY
-#define __NO_FORTIFY /* FORTIFY_SOURCE uses __builtin_memcpy, etc. */
-#endif
-
-#endif
 #endif /* _ASM_RISCV_STRING_H */

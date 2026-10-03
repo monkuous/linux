@@ -34,14 +34,6 @@ static inline void __raw_writel(u32 val, volatile void __iomem *addr)
 	asm volatile("sw %0, 0(%1)" : : "r" (val), "r" (addr));
 }
 
-#ifdef CONFIG_64BIT
-#define __raw_writeq __raw_writeq
-static inline void __raw_writeq(u64 val, volatile void __iomem *addr)
-{
-	asm volatile("sd %0, 0(%1)" : : "r" (val), "r" (addr));
-}
-#endif
-
 #define __raw_readb __raw_readb
 static inline u8 __raw_readb(const volatile void __iomem *addr)
 {
@@ -69,17 +61,6 @@ static inline u32 __raw_readl(const volatile void __iomem *addr)
 	return val;
 }
 
-#ifdef CONFIG_64BIT
-#define __raw_readq __raw_readq
-static inline u64 __raw_readq(const volatile void __iomem *addr)
-{
-	u64 val;
-
-	asm volatile("ld %0, 0(%1)" : "=r" (val) : "r" (addr));
-	return val;
-}
-#endif
-
 /*
  * Unordered I/O memory access primitives.  These are even more relaxed than
  * the relaxed versions, as they don't even order accesses between successive
@@ -92,11 +73,6 @@ static inline u64 __raw_readq(const volatile void __iomem *addr)
 #define writeb_cpu(v, c)	((void)__raw_writeb((v), (c)))
 #define writew_cpu(v, c)	((void)__raw_writew((__force u16)cpu_to_le16(v), (c)))
 #define writel_cpu(v, c)	((void)__raw_writel((__force u32)cpu_to_le32(v), (c)))
-
-#ifdef CONFIG_64BIT
-#define readq_cpu(c)		({ u64 __r = le64_to_cpu((__force __le64)__raw_readq(c)); __r; })
-#define writeq_cpu(v, c)	((void)__raw_writeq((__force u64)cpu_to_le64(v), (c)))
-#endif
 
 /*
  * Relaxed I/O memory access primitives. These follow the Device memory
@@ -120,11 +96,6 @@ static inline u64 __raw_readq(const volatile void __iomem *addr)
 #define writew_relaxed(v, c)	({ __io_rbw(); writew_cpu((v), (c)); __io_raw(); })
 #define writel_relaxed(v, c)	({ __io_rbw(); writel_cpu((v), (c)); __io_raw(); })
 
-#ifdef CONFIG_64BIT
-#define readq_relaxed(c)	({ u64 __v; __io_rbr(); __v = readq_cpu(c); __io_rar(); __v; })
-#define writeq_relaxed(v, c)	({ __io_rbw(); writeq_cpu((v), (c)); __io_raw(); })
-#endif
-
 /*
  * I/O memory access primitives.  Reads are ordered relative to any following
  * Normal memory read and delay() loop.  Writes are ordered relative to any
@@ -143,10 +114,5 @@ static inline u64 __raw_readq(const volatile void __iomem *addr)
 #define writeb(v, c)	({ __io_bw(); writeb_cpu((v), (c)); __io_aw(); })
 #define writew(v, c)	({ __io_bw(); writew_cpu((v), (c)); __io_aw(); })
 #define writel(v, c)	({ __io_bw(); writel_cpu((v), (c)); __io_aw(); })
-
-#ifdef CONFIG_64BIT
-#define readq(c)	({ u64 __v; __io_br(); __v = readq_cpu(c); __io_ar(__v); __v; })
-#define writeq(v, c)	({ __io_bw(); writeq_cpu((v), (c)); __io_aw(); })
-#endif
 
 #endif /* _ASM_RISCV_MMIO_H */

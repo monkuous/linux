@@ -17,8 +17,6 @@
 #include <asm/mmu_context.h>
 #include <asm/switch_to.h>
 
-#ifdef CONFIG_MMU
-
 DEFINE_STATIC_KEY_FALSE(use_asid_allocator);
 
 static unsigned long num_asids;
@@ -191,7 +189,7 @@ static void set_mm_asid(struct mm_struct *mm, unsigned int cpu)
 switch_mm_fast:
 	csr_write(CSR_SATP, virt_to_pfn(mm->pgd) |
 		  (cntx2asid(cntx) << SATP_ASID_SHIFT) |
-		  satp_mode);
+		  SATP_MODE_32);
 
 	if (need_flush_tlb)
 		local_flush_tlb_all();
@@ -200,7 +198,7 @@ switch_mm_fast:
 static void set_mm_noasid(struct mm_struct *mm)
 {
 	/* Switch the page table and blindly nuke entire local TLB */
-	csr_write(CSR_SATP, virt_to_pfn(mm->pgd) | satp_mode);
+	csr_write(CSR_SATP, virt_to_pfn(mm->pgd) | SATP_MODE_32);
 	local_flush_tlb_all_asid(0);
 }
 
@@ -273,13 +271,6 @@ static int __init asids_init(void)
 	return 0;
 }
 early_initcall(asids_init);
-#else
-static inline void set_mm(struct mm_struct *prev,
-			  struct mm_struct *next, unsigned int cpu)
-{
-	/* Nothing to do here when there is no MMU */
-}
-#endif
 
 /*
  * When necessary, performs a deferred icache flush for the given MM context,

@@ -17,7 +17,6 @@
 
 /* The array of function pointers for syscalls. */
 extern void * const sys_call_table[];
-extern void * const compat_sys_call_table[];
 
 /*
  * Only the low 32 bits of orig_a0 are meaningful, so we return int.
@@ -90,11 +89,7 @@ static inline void syscall_set_arguments(struct task_struct *task,
 
 static inline int syscall_get_arch(struct task_struct *task)
 {
-#ifdef CONFIG_64BIT
-	return AUDIT_ARCH_RISCV64;
-#else
 	return AUDIT_ARCH_RISCV32;
-#endif
 }
 
 typedef long (*syscall_t)(const struct pt_regs *);
@@ -102,12 +97,7 @@ static inline void syscall_handler(struct pt_regs *regs, ulong syscall)
 {
 	syscall_t fn;
 
-#ifdef CONFIG_COMPAT
-	if ((regs->status & SR_UXL) == SR_UXL_32)
-		fn = compat_sys_call_table[syscall];
-	else
-#endif
-		fn = sys_call_table[syscall];
+	fn = sys_call_table[syscall];
 
 	regs->a0 = fn(regs);
 }

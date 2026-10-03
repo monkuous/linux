@@ -33,5 +33,4 @@ SYM_FUNC_START(strrchr)
 	ret
 SYM_FUNC_END(strrchr)
 
-SYM_FUNC_ALIAS_WEAK(__pi_strrchr, strrchr)
 EXPORT_SYMBOL(strrchr)

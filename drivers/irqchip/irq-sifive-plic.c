@@ -550,22 +550,6 @@ static int plic_parse_nr_irqs_and_contexts(struct fwnode_handle *fwnode,
 {
 	int rc;
 
-	if (!is_of_node(fwnode)) {
-		rc = riscv_acpi_get_gsi_info(fwnode, gsi_base, id, nr_irqs, NULL);
-		if (rc) {
-			pr_err("%pfwP: failed to find GSI mapping\n", fwnode);
-			return rc;
-		}
-
-		*nr_contexts = acpi_rintc_get_plic_nr_contexts(*id);
-		if (WARN_ON(!*nr_contexts)) {
-			pr_err("%pfwP: no PLIC context available\n", fwnode);
-			return -EINVAL;
-		}
-
-		return 0;
-	}
-
 	rc = of_property_read_u32(to_of_node(fwnode), "riscv,ndev", nr_irqs);
 	if (rc) {
 		pr_err("%pfwP: riscv,ndev property not available\n", fwnode);
@@ -590,16 +574,6 @@ static int plic_parse_context_parent(struct fwnode_handle *fwnode, u32 context,
 	struct of_phandle_args parent;
 	unsigned long hartid;
 	int rc;
-
-	if (!is_of_node(fwnode)) {
-		hartid = acpi_rintc_ext_parent_to_hartid(id, context);
-		if (hartid == INVALID_HARTID)
-			return -EINVAL;
-
-		*parent_cpu = riscv_hartid_to_cpuid(hartid);
-		*parent_hwirq = RV_IRQ_EXT;
-		return 0;
-	}
 
 	rc = of_irq_parse_one(to_of_node(fwnode), context, &parent);
 	if (rc)
@@ -681,15 +655,7 @@ static int plic_probe(struct fwnode_handle *fwnode)
 			continue;
 		}
 
-		if (is_of_node(fwnode)) {
-			context_id = i;
-		} else {
-			context_id = acpi_rintc_get_plic_context(priv->acpi_plic_id, i);
-			if (context_id == INVALID_CONTEXT) {
-				pr_warn("%pfwP: invalid context id for context%d\n", fwnode, i);
-				continue;
-			}
-		}
+		context_id = i;
 
 		/*
 		 * Skip contexts other than external interrupts for our
@@ -833,7 +799,6 @@ static struct platform_driver plic_driver = {
 		.name		= "riscv-plic",
 		.of_match_table	= plic_match,
 		.suppress_bind_attrs = true,
-		.acpi_match_table = ACPI_PTR(plic_acpi_match),
 	},
 	.probe = plic_platform_probe,
 };

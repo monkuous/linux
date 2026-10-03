@@ -14,36 +14,16 @@
 
 #include <vdso/page.h>
 
-#define HPAGE_SHIFT		PMD_SHIFT
-#define HPAGE_SIZE		(_AC(1, UL) << HPAGE_SHIFT)
-#define HPAGE_MASK              (~(HPAGE_SIZE - 1))
-#define HUGETLB_PAGE_ORDER      (HPAGE_SHIFT - PAGE_SHIFT)
-
 /*
  * PAGE_OFFSET -- the first address of the first page of memory.
  * When not using MMU this corresponds to the first free page in
  * physical memory (aligned on a page boundary).
  */
-#ifdef CONFIG_MMU
-#ifdef CONFIG_64BIT
-#define PAGE_OFFSET_L5		_AC(0xff60000000000000, UL)
-#define PAGE_OFFSET_L4		_AC(0xffffaf8000000000, UL)
-#define PAGE_OFFSET_L3		_AC(0xffffffd600000000, UL)
-#define PAGE_OFFSET		kernel_map.page_offset
-#else
 #define PAGE_OFFSET		_AC(0xc0000000, UL)
-#endif /* CONFIG_64BIT */
-#else
-#define PAGE_OFFSET		((unsigned long)phys_ram_base)
-#endif /* CONFIG_MMU */
 
 #ifndef __ASSEMBLER__
 
-#ifdef CONFIG_RISCV_ISA_ZICBOZ
-void clear_page(void *page);
-#else
 #define clear_page(pgaddr)			memset((pgaddr), 0, PAGE_SIZE)
-#endif
 #define copy_page(to, from)			memcpy((to), (from), PAGE_SIZE)
 
 #define copy_user_page(vto, vfrom, vaddr, topg) copy_page(vto, vfrom)
@@ -76,25 +56,11 @@ typedef struct page *pgtable_t;
 #define __pgd(x)	((pgd_t) { (x) })
 #define __pgprot(x)	((pgprot_t) { (x) })
 
-#ifdef CONFIG_64BIT
-#define PTE_FMT "%016lx"
-#else
 #define PTE_FMT "%08lx"
-#endif
-
-#if defined(CONFIG_64BIT) && defined(CONFIG_MMU)
-/*
- * We override this value as its generic definition uses __pa too early in
- * the boot process (before kernel_map.va_pa_offset is set).
- */
-#define MIN_MEMBLOCK_ADDR      0
-#endif
 
 #define ARCH_PFN_OFFSET		(PFN_DOWN((unsigned long)phys_ram_base))
 
 struct kernel_mapping {
-	unsigned long virt_addr;
-	unsigned long virt_offset;
 	uintptr_t phys_addr;
 	uintptr_t size;
 	/* Offset between linear mapping virtual address and kernel load address */
@@ -106,13 +72,12 @@ struct kernel_mapping {
 
 extern struct kernel_mapping kernel_map;
 extern phys_addr_t phys_ram_base;
-extern unsigned long vmemmap_start_pfn;
 
 #define is_kernel_mapping(x)	\
-	((x) >= kernel_map.virt_addr && (x) < (kernel_map.virt_addr + kernel_map.size))
+	((x) >= KERNEL_LINK_ADDR && (x) < (KERNEL_LINK_ADDR + kernel_map.size))
 
 #define is_linear_mapping(x)	\
-	((x) >= PAGE_OFFSET && (!IS_ENABLED(CONFIG_64BIT) || (x) < PAGE_OFFSET + KERN_VIRT_SIZE))
+	((x) >= PAGE_OFFSET)
 
 #ifndef CONFIG_DEBUG_VIRTUAL
 #define linear_mapping_pa_to_va(x)	((void *)((unsigned long)(x) + kernel_map.va_pa_offset))
@@ -160,11 +125,6 @@ extern phys_addr_t __phys_addr_symbol(unsigned long x);
 #define page_to_virt(page)	(pfn_to_virt(page_to_pfn(page)))
 
 #define sym_to_pfn(x)           __phys_to_pfn(__pa_symbol(x))
-
-static inline unsigned long kaslr_offset(void)
-{
-	return kernel_map.virt_offset;
-}
 
 static __always_inline void *pfn_to_kaddr(unsigned long pfn)
 {

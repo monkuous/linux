@@ -9,45 +9,11 @@
 #define _ASM_RISCV_UACCESS_H
 
 #include <asm/asm-extable.h>
-#include <asm/cpufeature.h>
 #include <asm/pgtable.h>		/* for TASK_SIZE */
-
-#ifdef CONFIG_RISCV_ISA_SUPM
-static inline unsigned long __untagged_addr_remote(struct mm_struct *mm, unsigned long addr)
-{
-	if (riscv_has_extension_unlikely(RISCV_ISA_EXT_SUPM)) {
-		u8 pmlen = mm->context.pmlen;
-
-		/* Virtual addresses are sign-extended; physical addresses are zero-extended. */
-		if (IS_ENABLED(CONFIG_MMU))
-			return (long)(addr << pmlen) >> pmlen;
-		else
-			return (addr << pmlen) >> pmlen;
-	}
-
-	return addr;
-}
-
-#define untagged_addr(addr) ({							\
-	unsigned long __addr = (__force unsigned long)(addr);			\
-	(__force __typeof__(addr))__untagged_addr_remote(current->mm, __addr);	\
-})
-
-#define untagged_addr_remote(mm, addr) ({					\
-	unsigned long __addr = (__force unsigned long)(addr);			\
-	mmap_assert_locked(mm);							\
-	(__force __typeof__(addr))__untagged_addr_remote(mm, __addr);		\
-})
-
-#define access_ok(addr, size) likely(__access_ok(untagged_addr(addr), size))
-#else
-#define untagged_addr(addr) (addr)
-#endif
 
 /*
  * User space memory access functions
  */
-#ifdef CONFIG_MMU
 #include <linux/errno.h>
 #include <linux/compiler.h>
 #include <linux/thread_info.h>
@@ -130,10 +96,6 @@ do {								\
 } while (0)
 #endif /* CONFIG_CC_HAS_ASM_GOTO_OUTPUT */
 
-#ifdef CONFIG_64BIT
-#define __get_user_8(x, ptr, label) \
-	__get_user_asm("ld", x, ptr, label)
-#else /* !CONFIG_64BIT */
 
 #ifdef CONFIG_CC_HAS_ASM_GOTO_OUTPUT
 #define __get_user_8(x, ptr, label)				\
@@ -178,8 +140,6 @@ do {								\
 } while (0)
 #endif /* CONFIG_CC_HAS_ASM_GOTO_OUTPUT */
 
-#endif /* CONFIG_64BIT */
-
 unsigned long __must_check __asm_copy_to_user_sum_enabled(void __user *to,
 	const void *from, unsigned long n);
 unsigned long __must_check __asm_copy_from_user_sum_enabled(void *to,
@@ -187,8 +147,7 @@ unsigned long __must_check __asm_copy_from_user_sum_enabled(void *to,
 
 #define __get_user_nocheck(x, __gu_ptr, label)			\
 do {								\
-	if (!IS_ENABLED(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS) &&	\
-	    !IS_ALIGNED((uintptr_t)__gu_ptr, sizeof(*__gu_ptr))) {	\
+	if (!IS_ALIGNED((uintptr_t)__gu_ptr, sizeof(*__gu_ptr))) {	\
 		if (__asm_copy_from_user_sum_enabled(&(x), __gu_ptr, sizeof(*__gu_ptr))) \
 			goto label;				\
 		break;						\
@@ -245,7 +204,7 @@ __gu_failed:								\
  */
 #define __get_user(x, ptr)					\
 ({								\
-	const __typeof__(*(ptr)) __user *__gu_ptr = untagged_addr(ptr); \
+	const __typeof__(*(ptr)) __user *__gu_ptr = (ptr); 	\
 	long __gu_err = 0;					\
 	__typeof__(x) __gu_val;					\
 								\
@@ -296,10 +255,6 @@ do {								\
 		: : "rJ" (__x), "m"(*(ptr)) : : label);		\
 } while (0)
 
-#ifdef CONFIG_64BIT
-#define __put_user_8(x, ptr, label) \
-	__put_user_asm("sd", x, ptr, label)
-#else /* !CONFIG_64BIT */
 #define __put_user_8(x, ptr, label)				\
 do {								\
 	u32 __user *__ptr = (u32 __user *)(ptr);		\
@@ -315,12 +270,10 @@ do {								\
 			"m" (__ptr[__LSW]),			\
 			"m" (__ptr[__MSW]) : : label);		\
 } while (0)
-#endif /* CONFIG_64BIT */
 
 #define __put_user_nocheck(x, __gu_ptr, label)			\
 do {								\
-	if (!IS_ENABLED(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS) &&	\
-	    !IS_ALIGNED((uintptr_t)__gu_ptr, sizeof(*__gu_ptr))) {	\
+	if (!IS_ALIGNED((uintptr_t)__gu_ptr, sizeof(*__gu_ptr))) {	\
 		__typeof__(*(__gu_ptr)) ___val = (x);		\
 		if (__asm_copy_to_user_sum_enabled(__gu_ptr, &(___val), sizeof(*__gu_ptr))) \
 			goto label;				\
@@ -376,7 +329,7 @@ err_label:							\
  */
 #define __put_user(x, ptr)					\
 ({								\
-	__typeof__(*(ptr)) __user *__gu_ptr = untagged_addr(ptr); \
+	__typeof__(*(ptr)) __user *__gu_ptr = (ptr); 		\
 	__typeof__(*__gu_ptr) __val = (x);			\
 	long __pu_err = 0;					\
 								\
@@ -423,13 +376,13 @@ unsigned long __must_check __asm_copy_from_user(void *to,
 static inline unsigned long
 raw_copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	return __asm_copy_from_user(to, untagged_addr(from), n);
+	return __asm_copy_from_user(to, from, n);
 }
 
 static inline unsigned long
 raw_copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-	return __asm_copy_to_user(untagged_addr(to), from, n);
+	return __asm_copy_to_user(to, from, n);
 }
 
 extern long strncpy_from_user(char *dest, const char __user *src, long count);
@@ -444,7 +397,7 @@ unsigned long __must_check clear_user(void __user *to, unsigned long n)
 {
 	might_fault();
 	return access_ok(to, n) ?
-		__clear_user(untagged_addr(to), n) : n;
+		__clear_user(to, n) : n;
 }
 
 #define arch_get_kernel_nofault(dst, src, type, err_label)			\
@@ -487,7 +440,4 @@ static inline void user_access_restore(unsigned long enabled) { }
 	if (__asm_copy_from_user_sum_enabled(_dst, _src, _len))		\
 		goto label;
 
-#else /* CONFIG_MMU */
-#include <asm-generic/uaccess.h>
-#endif /* CONFIG_MMU */
 #endif /* _ASM_RISCV_UACCESS_H */

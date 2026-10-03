@@ -3,7 +3,6 @@
  * Copyright (C) 2019 SiFive
  */
 
-#include <linux/efi.h>
 #include <linux/init.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
@@ -11,7 +10,6 @@
 #include <linux/ptdump.h>
 
 #include <linux/pgtable.h>
-#include <asm/kasan.h>
 
 #define pt_dump_seq_printf(m, fmt, args...)	\
 ({						\
@@ -63,21 +61,9 @@ enum address_markers_idx {
 	FIXMAP_END_NR,
 	PCI_IO_START_NR,
 	PCI_IO_END_NR,
-#ifdef CONFIG_SPARSEMEM_VMEMMAP
-	VMEMMAP_START_NR,
-	VMEMMAP_END_NR,
-#endif
 	VMALLOC_START_NR,
 	VMALLOC_END_NR,
 	PAGE_OFFSET_NR,
-#ifdef CONFIG_KASAN
-	KASAN_SHADOW_START_NR,
-	KASAN_SHADOW_END_NR,
-#endif
-#ifdef CONFIG_64BIT
-	MODULES_MAPPING_NR,
-	KERNEL_MAPPING_NR,
-#endif
 	END_OF_SPACE_NR
 };
 
@@ -86,21 +72,9 @@ static struct addr_marker address_markers[] = {
 	{0, "Fixmap end"},
 	{0, "PCI I/O start"},
 	{0, "PCI I/O end"},
-#ifdef CONFIG_SPARSEMEM_VMEMMAP
-	{0, "vmemmap start"},
-	{0, "vmemmap end"},
-#endif
 	{0, "vmalloc() area"},
 	{0, "vmalloc() end"},
 	{0, "Linear mapping"},
-#ifdef CONFIG_KASAN
-	{0, "Kasan shadow start"},
-	{0, "Kasan shadow end"},
-#endif
-#ifdef CONFIG_64BIT
-	{0, "Modules/BPF mapping"},
-	{0, "Kernel mapping"},
-#endif
 	{-1, NULL},
 };
 
@@ -111,21 +85,6 @@ static struct ptd_mm_info kernel_ptd_info = {
 	.end		= ULONG_MAX,
 };
 
-#ifdef CONFIG_EFI
-static struct addr_marker efi_addr_markers[] = {
-		{ 0,		"UEFI runtime start" },
-		{ SZ_1G,	"UEFI runtime end" },
-		{ -1,		NULL }
-};
-
-static struct ptd_mm_info efi_ptd_info = {
-	.mm		= &efi_mm,
-	.markers	= efi_addr_markers,
-	.base_addr	= 0,
-	.end		= SZ_2G,
-};
-#endif
-
 /* Page Table Entry */
 struct prot_bits {
 	u64 mask;
@@ -135,16 +94,6 @@ struct prot_bits {
 
 static const struct prot_bits pte_bits[] = {
 	{
-#ifdef CONFIG_64BIT
-		.mask = _PAGE_NAPOT,
-		.set = "N",
-		.clear = ".",
-	}, {
-		.mask = _PAGE_MTMASK_SVPBMT,
-		.set = "MT(%s)",
-		.clear = "  ..  ",
-	}, {
-#endif
 		.mask = _PAGE_SOFT,
 		.set = "RSW(%d)",
 		.clear = "  ..  ",
@@ -193,11 +142,11 @@ static struct pg_level pg_level[] = {
 	{ /* pgd */
 		.name = "PGD",
 	}, { /* p4d */
-		.name = (CONFIG_PGTABLE_LEVELS > 4) ? "P4D" : "PGD",
+		.name = "PGD",
 	}, { /* pud */
-		.name = (CONFIG_PGTABLE_LEVELS > 3) ? "PUD" : "PGD",
+		.name = "PGD",
 	}, { /* pmd */
-		.name = (CONFIG_PGTABLE_LEVELS > 2) ? "PMD" : "PGD",
+		.name = "PGD",
 	}, { /* pte */
 		.name = "PTE",
 	},
@@ -215,16 +164,6 @@ static void dump_prot(struct pg_state *st)
 		if (val) {
 			if (pte_bits[i].mask == _PAGE_SOFT)
 				snprintf(s, sizeof(s), pte_bits[i].set, val >> 8);
-#ifdef CONFIG_64BIT
-			else if (pte_bits[i].mask == _PAGE_MTMASK_SVPBMT) {
-				if (val == _PAGE_NOCACHE_SVPBMT)
-					snprintf(s, sizeof(s), pte_bits[i].set, "NC");
-				else if (val == _PAGE_IO_SVPBMT)
-					snprintf(s, sizeof(s), pte_bits[i].set, "IO");
-				else
-					snprintf(s, sizeof(s), pte_bits[i].set, "??");
-			}
-#endif
 			else
 				strscpy(s, pte_bits[i].set);
 		} else {
@@ -235,11 +174,7 @@ static void dump_prot(struct pg_state *st)
 	}
 }
 
-#ifdef CONFIG_64BIT
-#define ADDR_FORMAT	"0x%016lx"
-#else
 #define ADDR_FORMAT	"0x%08lx"
-#endif
 static void dump_addr(struct pg_state *st, unsigned long addr)
 {
 	static const char units[] = "KMGTPE";
@@ -428,26 +363,11 @@ static int __init ptdump_init(void)
 	address_markers[FIXMAP_END_NR].start_address = FIXADDR_TOP;
 	address_markers[PCI_IO_START_NR].start_address = PCI_IO_START;
 	address_markers[PCI_IO_END_NR].start_address = PCI_IO_END;
-#ifdef CONFIG_SPARSEMEM_VMEMMAP
-	address_markers[VMEMMAP_START_NR].start_address = VMEMMAP_START;
-	address_markers[VMEMMAP_END_NR].start_address = VMEMMAP_END;
-#endif
 	address_markers[VMALLOC_START_NR].start_address = VMALLOC_START;
 	address_markers[VMALLOC_END_NR].start_address = VMALLOC_END;
 	address_markers[PAGE_OFFSET_NR].start_address = PAGE_OFFSET;
-#ifdef CONFIG_KASAN
-	address_markers[KASAN_SHADOW_START_NR].start_address = KASAN_SHADOW_START;
-	address_markers[KASAN_SHADOW_END_NR].start_address = KASAN_SHADOW_END;
-#endif
-#ifdef CONFIG_64BIT
-	address_markers[MODULES_MAPPING_NR].start_address = MODULES_VADDR;
-	address_markers[KERNEL_MAPPING_NR].start_address = kernel_map.virt_addr;
-#endif
 
 	kernel_ptd_info.base_addr = KERN_VIRT_START;
-
-	pg_level[1].name = pgtable_l5_enabled ? "P4D" : "PGD";
-	pg_level[2].name = pgtable_l4_enabled ? "PUD" : "PGD";
 
 	for (i = 0; i < ARRAY_SIZE(pg_level); i++)
 		for (j = 0; j < ARRAY_SIZE(pte_bits); j++)
@@ -455,11 +375,6 @@ static int __init ptdump_init(void)
 
 	debugfs_create_file("kernel_page_tables", 0400, NULL, &kernel_ptd_info,
 			    &ptdump_fops);
-#ifdef CONFIG_EFI
-	if (efi_enabled(EFI_RUNTIME_SERVICES))
-		debugfs_create_file("efi_page_tables", 0400, NULL, &efi_ptd_info,
-				    &ptdump_fops);
-#endif
 
 	return 0;
 }

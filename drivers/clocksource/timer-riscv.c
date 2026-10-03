@@ -25,22 +25,14 @@
 #include <linux/limits.h>
 #include <clocksource/timer-riscv.h>
 #include <asm/smp.h>
-#include <asm/cpufeature.h>
 #include <asm/sbi.h>
 #include <asm/timex.h>
 
-static DEFINE_STATIC_KEY_FALSE(riscv_sstc_available);
 static bool riscv_timer_cannot_wake_cpu;
 
 static void riscv_clock_event_stop(void)
 {
-	if (static_branch_likely(&riscv_sstc_available)) {
-		csr_write(CSR_STIMECMP, ULONG_MAX);
-		if (IS_ENABLED(CONFIG_32BIT))
-			csr_write(CSR_STIMECMPH, ULONG_MAX);
-	} else {
-		sbi_set_timer(U64_MAX);
-	}
+	sbi_set_timer(U64_MAX);
 }
 
 static int riscv_clock_next_event(unsigned long delta,
@@ -48,16 +40,7 @@ static int riscv_clock_next_event(unsigned long delta,
 {
 	u64 next_tval = get_cycles64() + delta;
 
-	if (static_branch_likely(&riscv_sstc_available)) {
-#if defined(CONFIG_32BIT)
-		csr_write(CSR_STIMECMP, ULONG_MAX);
-		csr_write(CSR_STIMECMPH, next_tval >> 32);
-		csr_write(CSR_STIMECMP, next_tval & 0xFFFFFFFF);
-#else
-		csr_write(CSR_STIMECMP, next_tval);
-#endif
-	} else
-		sbi_set_timer(next_tval);
+	sbi_set_timer(next_tval);
 
 	return 0;
 }
@@ -98,7 +81,6 @@ static struct clocksource riscv_clocksource = {
 	.mask		= CLOCKSOURCE_MASK(64),
 	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
 	.read		= riscv_clocksource_rdtime,
-	.vdso_clock_mode = VDSO_CLOCKMODE_ARCHTIMER,
 };
 
 static int riscv_timer_starting_cpu(unsigned int cpu)
@@ -112,8 +94,6 @@ static int riscv_timer_starting_cpu(unsigned int cpu)
 	ce->irq = riscv_clock_event_irq;
 	if (riscv_timer_cannot_wake_cpu)
 		ce->features |= CLOCK_EVT_FEAT_C3STOP;
-	if (static_branch_likely(&riscv_sstc_available))
-		ce->rating = 450;
 	clockevents_config_and_register(ce, riscv_timebase, 100, ULONG_MAX);
 
 	enable_percpu_irq(riscv_clock_event_irq,
@@ -184,11 +164,6 @@ static int __init riscv_timer_init_common(void)
 	if (error) {
 		pr_err("registering percpu irq failed [%d]\n", error);
 		return error;
-	}
-
-	if (riscv_isa_extension_available(NULL, SSTC)) {
-		pr_info("Timer interrupt in S-mode is available via sstc extension\n");
-		static_branch_enable(&riscv_sstc_available);
 	}
 
 	error = cpuhp_setup_state(CPUHP_AP_RISCV_TIMER_STARTING,

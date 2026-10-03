@@ -420,11 +420,7 @@ static __always_inline bool riscv_insn_is_c_jalr(u32 code)
 #define SH_RS2C			2
 #define MASK_RX			0x1f
 
-#if defined(CONFIG_64BIT)
-#define LOG_REGBYTES		3
-#else
 #define LOG_REGBYTES		2
-#endif
 
 #define MASK_FUNCT3		0x7000
 

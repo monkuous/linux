@@ -28,11 +28,7 @@ int perf_reg_validate(u64 mask)
 
 u64 perf_reg_abi(struct task_struct *task)
 {
-#if __riscv_xlen == 64
-	return PERF_SAMPLE_REGS_ABI_64;
-#else
 	return PERF_SAMPLE_REGS_ABI_32;
-#endif
 }
 
 void perf_get_regs_user(struct perf_regs *regs_user,

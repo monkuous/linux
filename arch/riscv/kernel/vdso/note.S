@@ -14,5 +14,3 @@ ELFNOTE_START(Linux, 0, "a")
 ELFNOTE_END
 
 BUILD_SALT
-
-emit_riscv_feature_1_and

@@ -8,10 +8,6 @@
 test_set32:
 	lw	a0, set32
 	la	t0, set32
-#ifndef CONFIG_32BIT
-	slli	t0, t0, 32
-	srli	t0, t0, 32
-#endif
 	sub	a0, a0, t0
 	ret
 .data

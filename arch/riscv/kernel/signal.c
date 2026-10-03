@@ -17,204 +17,20 @@
 #include <asm/ucontext.h>
 #include <asm/vdso.h>
 #include <asm/signal.h>
-#include <asm/signal32.h>
 #include <asm/switch_to.h>
-#include <asm/vector.h>
 #include <asm/csr.h>
 #include <asm/cacheflush.h>
-#include <asm/usercfi.h>
 
 unsigned long signal_minsigstksz __ro_after_init;
 
 extern u32 __user_rt_sigreturn[2];
-static size_t riscv_v_sc_size __ro_after_init;
-static size_t riscv_zicfiss_sc_size __ro_after_init;
 
 #define DEBUG_SIG 0
 
 struct rt_sigframe {
 	struct siginfo info;
 	struct ucontext uc;
-#ifndef CONFIG_MMU
-	u32 sigreturn_code[2];
-#endif
 };
-
-#ifdef CONFIG_FPU
-static long restore_fp_state(struct pt_regs *regs,
-			     union __riscv_fp_state __user *sc_fpregs)
-{
-	long err;
-	struct __riscv_d_ext_state __user *state = &sc_fpregs->d;
-
-	err = __copy_from_user(&current->thread.fstate, state, sizeof(*state));
-	if (unlikely(err))
-		return err;
-
-	fstate_restore(current, regs);
-	return 0;
-}
-
-static long save_fp_state(struct pt_regs *regs,
-			  union __riscv_fp_state __user *sc_fpregs)
-{
-	long err;
-	struct __riscv_d_ext_state __user *state = &sc_fpregs->d;
-
-	fstate_save(current, regs);
-	err = __copy_to_user(state, &current->thread.fstate, sizeof(*state));
-	return err;
-}
-#else
-#define save_fp_state(task, regs) (0)
-#define restore_fp_state(task, regs) (0)
-#endif
-
-static long save_v_state(struct pt_regs *regs, void __user *sc_vec)
-{
-	struct __sc_riscv_v_state __user *state;
-	void __user *datap;
-	long err;
-
-	if (!IS_ENABLED(CONFIG_RISCV_ISA_V) ||
-	    !((has_vector() || has_xtheadvector()) &&
-	    riscv_v_vstate_query(regs)))
-		return 0;
-
-	/* Place state to the user's signal context space */
-	state = (struct __sc_riscv_v_state __user *)sc_vec;
-	/* Point datap right after the end of __sc_riscv_v_state */
-	datap = state + 1;
-
-	/* datap is designed to be 16 byte aligned for better performance */
-	WARN_ON(!IS_ALIGNED((unsigned long)datap, 16));
-
-	get_cpu_vector_context();
-	riscv_v_vstate_save(&current->thread.vstate, regs);
-	put_cpu_vector_context();
-
-	/* Copy everything of vstate but datap. */
-	err = __copy_to_user(&state->v_state, &current->thread.vstate,
-			     offsetof(struct __riscv_v_ext_state, datap));
-	/* Copy the pointer datap itself. */
-	err |= __put_user((__force void *)datap, &state->v_state.datap);
-	/* Copy the whole vector content to user space datap. */
-	err |= __copy_to_user(datap, current->thread.vstate.datap, riscv_v_vsize);
-	if (unlikely(err))
-		return -EFAULT;
-
-	/* Only return the size if everything has done successfully  */
-	return riscv_v_sc_size;
-}
-
-/*
- * Restore Vector extension context from the user's signal frame. This function
- * assumes a valid extension header. So magic and size checking must be done by
- * the caller.
- */
-static long __restore_v_state(struct pt_regs *regs, void __user *sc_vec)
-{
-	long err;
-	struct __sc_riscv_v_state __user *state = sc_vec;
-	void __user *datap;
-
-	/*
-	 * Mark the vstate as clean prior performing the actual copy,
-	 * to avoid getting the vstate incorrectly clobbered by the
-	 *  discarded vector state.
-	 */
-	riscv_v_vstate_set_restore(current, regs);
-
-	/* Copy everything of __sc_riscv_v_state except datap. */
-	err = __copy_from_user(&current->thread.vstate, &state->v_state,
-			       offsetof(struct __riscv_v_ext_state, datap));
-	if (unlikely(err))
-		return err;
-
-	/* Copy the pointer datap itself. */
-	err = __get_user(datap, &state->v_state.datap);
-	if (unlikely(err))
-		return err;
-	/*
-	 * Copy the whole vector content from user space datap. Use
-	 * copy_from_user to prevent information leak.
-	 */
-	return copy_from_user(current->thread.vstate.datap, datap, riscv_v_vsize);
-}
-
-static long save_cfiss_state(struct pt_regs *regs, void __user *sc_cfi)
-{
-	struct __sc_riscv_cfi_state __user *state = sc_cfi;
-	unsigned long ss_ptr = 0;
-	long err = 0;
-
-	if (!is_shstk_enabled(current))
-		return 0;
-
-	/*
-	 * Save a pointer to the shadow stack itself on shadow stack as a form of token.
-	 * A token on the shadow stack gives the following properties:
-	 * - Safe save and restore for shadow stack switching. Any save of a shadow stack
-	 *   must have saved a token on the shadow stack. Similarly any restore of shadow
-	 *   stack must check the token before restore. Since writing to the shadow stack with
-	 *   address of the shadow stack itself is not easily allowed, a restore without a save
-	 *   is quite difficult for an attacker to perform.
-	 * - A natural break. A token in shadow stack provides a natural break in shadow stack
-	 *   So a single linear range can be bucketed into different shadow stack segments. Any
-	 *   sspopchk will detect the condition and fault to kernel as a sw check exception.
-	 */
-	err |= save_user_shstk(current, &ss_ptr);
-	err |= __put_user(ss_ptr, &state->ss_ptr);
-	if (unlikely(err))
-		return -EFAULT;
-
-	return riscv_zicfiss_sc_size;
-}
-
-static long __restore_cfiss_state(struct pt_regs *regs, void __user *sc_cfi)
-{
-	struct __sc_riscv_cfi_state __user *state = sc_cfi;
-	unsigned long ss_ptr = 0;
-	long err;
-
-	/*
-	 * Restore shadow stack as a form of token stored on the shadow stack itself as a safe
-	 * way to restore.
-	 * A token on the shadow stack gives the following properties:
-	 * - Safe save and restore for shadow stack switching. Any save of shadow stack
-	 *   must have saved a token on shadow stack. Similarly any restore of shadow
-	 *   stack must check the token before restore. Since writing to a shadow stack with
-	 *   the address of shadow stack itself is not easily allowed, a restore without a save
-	 *   is quite difficult for an attacker to perform.
-	 * - A natural break. A token in the shadow stack provides a natural break in shadow stack
-	 *   So a single linear range can be bucketed into different shadow stack segments.
-	 *   sspopchk will detect the condition and fault to kernel as a sw check exception.
-	 */
-	err = __copy_from_user(&ss_ptr, &state->ss_ptr, sizeof(unsigned long));
-
-	if (unlikely(err))
-		return err;
-
-	return restore_user_shstk(current, ss_ptr);
-}
-
-struct arch_ext_priv {
-	__u32 magic;
-	long (*save)(struct pt_regs *regs, void __user *sc_vec);
-};
-
-static struct arch_ext_priv arch_ext_list[] = {
-	{
-		.magic = RISCV_V_MAGIC,
-		.save = &save_v_state,
-	},
-	{
-		.magic = RISCV_ZICFISS_MAGIC,
-		.save = &save_cfiss_state,
-	},
-};
-
-static const size_t nr_arch_exts = ARRAY_SIZE(arch_ext_list);
 
 static long restore_sigcontext(struct pt_regs *regs,
 	struct sigcontext __user *sc)
@@ -226,13 +42,6 @@ static long restore_sigcontext(struct pt_regs *regs,
 	err = __copy_from_user(regs, &sc->sc_regs, sizeof(sc->sc_regs));
 	if (unlikely(err))
 		return err;
-
-	/* Restore the floating-point state. */
-	if (has_fpu()) {
-		err = restore_fp_state(regs, &sc->sc_fpregs);
-		if (unlikely(err))
-			return err;
-	}
 
 	/* Check the reserved word before extensions parsing */
 	err = __get_user(rsvd, &sc->sc_extdesc.reserved);
@@ -257,19 +66,6 @@ static long restore_sigcontext(struct pt_regs *regs,
 				return -EINVAL;
 
 			return 0;
-		case RISCV_V_MAGIC:
-			if (!(has_vector() || has_xtheadvector()) || !riscv_v_vstate_query(regs) ||
-			    size != riscv_v_sc_size)
-				return -EINVAL;
-
-			err = __restore_v_state(regs, sc_ext_ptr);
-			break;
-		case RISCV_ZICFISS_MAGIC:
-			if (!is_shstk_enabled(current) || size != riscv_zicfiss_sc_size)
-				return -EINVAL;
-
-			err = __restore_cfiss_state(regs, sc_ext_ptr);
-			break;
 		default:
 			return -EINVAL;
 		}
@@ -285,14 +81,6 @@ static size_t get_rt_frame_size(bool cal_all)
 	size_t total_context_size = 0;
 
 	frame_size = sizeof(*frame);
-
-	if (has_vector() || has_xtheadvector()) {
-		if (cal_all || riscv_v_vstate_query(task_pt_regs(current)))
-			total_context_size += riscv_v_sc_size;
-	}
-
-	if (is_shstk_enabled(current))
-		total_context_size += riscv_zicfiss_sc_size;
 
 	/*
 	 * Preserved a __riscv_ctx_hdr for END signal context header if an
@@ -355,29 +143,10 @@ static long setup_sigcontext(struct rt_sigframe __user *frame,
 {
 	struct sigcontext __user *sc = &frame->uc.uc_mcontext;
 	struct __riscv_ctx_hdr __user *sc_ext_ptr = &sc->sc_extdesc.hdr;
-	struct arch_ext_priv *arch_ext;
-	long err, i, ext_size;
+	long err;
 
 	/* sc_regs is structured the same as the start of pt_regs */
 	err = __copy_to_user(&sc->sc_regs, regs, sizeof(sc->sc_regs));
-	/* Save the floating-point state. */
-	if (has_fpu())
-		err |= save_fp_state(regs, &sc->sc_fpregs);
-	/* Save the vector state. */
-	for (i = 0; i < nr_arch_exts; i++) {
-		arch_ext = &arch_ext_list[i];
-		if (!arch_ext->save)
-			continue;
-
-		ext_size = arch_ext->save(regs, sc_ext_ptr + 1);
-		if (ext_size <= 0) {
-			err |= ext_size;
-		} else {
-			err |= __put_user(arch_ext->magic, &sc_ext_ptr->magic);
-			err |= __put_user(ext_size, &sc_ext_ptr->size);
-			sc_ext_ptr = (void __user *)sc_ext_ptr + ext_size;
-		}
-	}
 	/* Write zero to fp-reserved space and check it on restore_sigcontext */
 	err |= __put_user(0, &sc->sc_extdesc.reserved);
 	/* And put END __riscv_ctx_hdr at the end. */
@@ -434,29 +203,8 @@ static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 		return -EFAULT;
 
 	/* Set up to return from userspace. */
-#ifdef CONFIG_MMU
 	regs->ra = (unsigned long)VDSO_SYMBOL(
 		current->mm->context.vdso, rt_sigreturn);
-
-	/* if bcfi is enabled x1 (ra) and x5 (t0) must match. not sure if we need this? */
-	if (is_shstk_enabled(current))
-		regs->t0 = regs->ra;
-
-#else
-	/*
-	 * For the nommu case we don't have a VDSO.  Instead we push two
-	 * instructions to call the rt_sigreturn syscall onto the user stack.
-	 */
-	if (copy_to_user(&frame->sigreturn_code, __user_rt_sigreturn,
-			 sizeof(frame->sigreturn_code)))
-		return -EFAULT;
-
-	addr = (unsigned long)&frame->sigreturn_code;
-	/* Make sure the two instructions are pushed to icache. */
-	flush_icache_range(addr, addr + sizeof(frame->sigreturn_code));
-
-	regs->ra = addr;
-#endif /* CONFIG_MMU */
 
 	/*
 	 * Set up registers for signal handler.
@@ -488,10 +236,7 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 	rseq_signal_deliver(ksig, regs);
 
 	/* Set up the stack frame */
-	if (is_compat_task())
-		ret = compat_setup_rt_frame(ksig, oldset, regs);
-	else
-		ret = setup_rt_frame(ksig, oldset, regs);
+	ret = setup_rt_frame(ksig, oldset, regs);
 
 	signal_setup_done(ret, ksig, 0);
 }
@@ -568,11 +313,6 @@ void arch_do_signal_or_restart(struct pt_regs *regs)
 void init_rt_signal_env(void);
 void __init init_rt_signal_env(void)
 {
-	riscv_v_sc_size = sizeof(struct __riscv_ctx_hdr) +
-			  sizeof(struct __sc_riscv_v_state) + riscv_v_vsize;
-
-	riscv_zicfiss_sc_size = sizeof(struct __riscv_ctx_hdr) +
-			  sizeof(struct __sc_riscv_cfi_state);
 	/*
 	 * Determine the stack space required for guaranteed signal delivery.
 	 * The signal_minsigstksz will be populated into the AT_MINSIGSTKSZ entry

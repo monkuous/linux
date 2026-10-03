@@ -3,7 +3,6 @@
  * Copyright (C) 2012 Regents of the University of California
  */
 
-#include <linux/efi.h>
 #include <linux/reboot.h>
 #include <linux/pm.h>
 
@@ -18,12 +17,6 @@ EXPORT_SYMBOL(pm_power_off);
 
 void machine_restart(char *cmd)
 {
-	/*
-	 * UpdateCapsule() depends on the system being reset via ResetSystem().
-	 */
-	if (efi_enabled(EFI_RUNTIME_SERVICES))
-		efi_reboot(reboot_mode, NULL);
-
 	do_kernel_restart(cmd);
 	while (1);
 }

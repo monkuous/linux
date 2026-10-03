@@ -37,10 +37,6 @@ SYM_FUNC_START(__memset)
 	or a1, a3, a1
 	slli a3, a1, 16
 	or a1, a3, a1
-#ifdef CONFIG_64BIT
-	slli a3, a1, 32
-	or a1, a3, a1
-#endif
 
 	/* Calculate end address */
 	andi a4, a2, ~(SZREG-1)
@@ -57,9 +53,6 @@ SYM_FUNC_START(__memset)
 	/* Jump into loop body */
 	/* Assumes 32-bit instruction lengths */
 	la a5, 3f
-#ifdef CONFIG_64BIT
-	srli a4, a4, 1
-#endif
 	add a5, a5, a4
 	jr a5
 3:
@@ -111,5 +104,3 @@ SYM_FUNC_START(__memset)
 	ret
 SYM_FUNC_END(__memset)
 SYM_FUNC_ALIAS_WEAK(memset, __memset)
-SYM_FUNC_ALIAS(__pi_memset, __memset)
-SYM_FUNC_ALIAS(__pi___memset, __memset)

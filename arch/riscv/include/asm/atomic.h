@@ -8,13 +8,7 @@
 #ifndef _ASM_RISCV_ATOMIC_H
 #define _ASM_RISCV_ATOMIC_H
 
-#ifdef CONFIG_GENERIC_ATOMIC64
-# include <asm-generic/atomic64.h>
-#else
-# if (__riscv_xlen < 64)
-#  error "64-bit atomics require XLEN to be at least 64"
-# endif
-#endif
+#include <asm-generic/atomic64.h>
 
 #include <asm/cmpxchg.h>
 
@@ -33,18 +27,6 @@ static __always_inline void arch_atomic_set(atomic_t *v, int i)
 	WRITE_ONCE(v->counter, i);
 }
 
-#ifndef CONFIG_GENERIC_ATOMIC64
-#define ATOMIC64_INIT(i) { (i) }
-static __always_inline s64 arch_atomic64_read(const atomic64_t *v)
-{
-	return READ_ONCE(v->counter);
-}
-static __always_inline void arch_atomic64_set(atomic64_t *v, s64 i)
-{
-	WRITE_ONCE(v->counter, i);
-}
-#endif
-
 /*
  * First, the atomic ops that have no ordering constraints and therefore don't
  * have the AQ or RL bits set.  These don't return anything, so there's only
@@ -61,14 +43,8 @@ void arch_atomic##prefix##_##op(c_type i, atomic##prefix##_t *v)	\
 		: "memory");						\
 }									\
 
-#ifdef CONFIG_GENERIC_ATOMIC64
 #define ATOMIC_OPS(op, asm_op, I)					\
         ATOMIC_OP (op, asm_op, I, w, int,   )
-#else
-#define ATOMIC_OPS(op, asm_op, I)					\
-        ATOMIC_OP (op, asm_op, I, w, int,   )				\
-        ATOMIC_OP (op, asm_op, I, d, s64, 64)
-#endif
 
 ATOMIC_OPS(add, add,  i)
 ATOMIC_OPS(sub, add, -i)
@@ -122,17 +98,9 @@ c_type arch_atomic##prefix##_##op##_return(c_type i, atomic##prefix##_t *v)	\
         return arch_atomic##prefix##_fetch_##op(i, v) c_op I;		\
 }
 
-#ifdef CONFIG_GENERIC_ATOMIC64
 #define ATOMIC_OPS(op, asm_op, c_op, I)					\
         ATOMIC_FETCH_OP( op, asm_op,       I, w, int,   )		\
         ATOMIC_OP_RETURN(op, asm_op, c_op, I, w, int,   )
-#else
-#define ATOMIC_OPS(op, asm_op, c_op, I)					\
-        ATOMIC_FETCH_OP( op, asm_op,       I, w, int,   )		\
-        ATOMIC_OP_RETURN(op, asm_op, c_op, I, w, int,   )		\
-        ATOMIC_FETCH_OP( op, asm_op,       I, d, s64, 64)		\
-        ATOMIC_OP_RETURN(op, asm_op, c_op, I, d, s64, 64)
-#endif
 
 ATOMIC_OPS(add, add, +,  i)
 ATOMIC_OPS(sub, add, +, -i)
@@ -147,28 +115,10 @@ ATOMIC_OPS(sub, add, +, -i)
 #define arch_atomic_fetch_add		arch_atomic_fetch_add
 #define arch_atomic_fetch_sub		arch_atomic_fetch_sub
 
-#ifndef CONFIG_GENERIC_ATOMIC64
-#define arch_atomic64_add_return_relaxed	arch_atomic64_add_return_relaxed
-#define arch_atomic64_sub_return_relaxed	arch_atomic64_sub_return_relaxed
-#define arch_atomic64_add_return		arch_atomic64_add_return
-#define arch_atomic64_sub_return		arch_atomic64_sub_return
-
-#define arch_atomic64_fetch_add_relaxed	arch_atomic64_fetch_add_relaxed
-#define arch_atomic64_fetch_sub_relaxed	arch_atomic64_fetch_sub_relaxed
-#define arch_atomic64_fetch_add		arch_atomic64_fetch_add
-#define arch_atomic64_fetch_sub		arch_atomic64_fetch_sub
-#endif
-
 #undef ATOMIC_OPS
 
-#ifdef CONFIG_GENERIC_ATOMIC64
 #define ATOMIC_OPS(op, asm_op, I)					\
         ATOMIC_FETCH_OP(op, asm_op, I, w, int,   )
-#else
-#define ATOMIC_OPS(op, asm_op, I)					\
-        ATOMIC_FETCH_OP(op, asm_op, I, w, int,   )			\
-        ATOMIC_FETCH_OP(op, asm_op, I, d, s64, 64)
-#endif
 
 ATOMIC_OPS(and, and, i)
 ATOMIC_OPS( or,  or, i)
@@ -180,15 +130,6 @@ ATOMIC_OPS(xor, xor, i)
 #define arch_atomic_fetch_and		arch_atomic_fetch_and
 #define arch_atomic_fetch_or		arch_atomic_fetch_or
 #define arch_atomic_fetch_xor		arch_atomic_fetch_xor
-
-#ifndef CONFIG_GENERIC_ATOMIC64
-#define arch_atomic64_fetch_and_relaxed	arch_atomic64_fetch_and_relaxed
-#define arch_atomic64_fetch_or_relaxed	arch_atomic64_fetch_or_relaxed
-#define arch_atomic64_fetch_xor_relaxed	arch_atomic64_fetch_xor_relaxed
-#define arch_atomic64_fetch_and		arch_atomic64_fetch_and
-#define arch_atomic64_fetch_or		arch_atomic64_fetch_or
-#define arch_atomic64_fetch_xor		arch_atomic64_fetch_xor
-#endif
 
 #undef ATOMIC_OPS
 
@@ -220,19 +161,6 @@ static __always_inline int arch_atomic_fetch_add_unless(atomic_t *v, int a, int 
 	return prev;
 }
 #define arch_atomic_fetch_add_unless arch_atomic_fetch_add_unless
-
-#ifndef CONFIG_GENERIC_ATOMIC64
-static __always_inline s64 arch_atomic64_fetch_add_unless(atomic64_t *v, s64 a, s64 u)
-{
-       s64 prev;
-       long rc;
-
-	_arch_atomic_fetch_add_unless(prev, rc, v->counter, a, u, "d");
-
-	return prev;
-}
-#define arch_atomic64_fetch_add_unless arch_atomic64_fetch_add_unless
-#endif
 
 #define _arch_atomic_inc_unless_negative(_prev, _rc, counter, sfx)	\
 ({									\
@@ -311,43 +239,5 @@ static __always_inline int arch_atomic_dec_if_positive(atomic_t *v)
 }
 
 #define arch_atomic_dec_if_positive arch_atomic_dec_if_positive
-
-#ifndef CONFIG_GENERIC_ATOMIC64
-static __always_inline bool arch_atomic64_inc_unless_negative(atomic64_t *v)
-{
-	s64 prev;
-	long rc;
-
-	_arch_atomic_inc_unless_negative(prev, rc, v->counter, "d");
-
-	return !(prev < 0);
-}
-
-#define arch_atomic64_inc_unless_negative arch_atomic64_inc_unless_negative
-
-static __always_inline bool arch_atomic64_dec_unless_positive(atomic64_t *v)
-{
-	s64 prev;
-	long rc;
-
-	_arch_atomic_dec_unless_positive(prev, rc, v->counter, "d");
-
-	return !(prev > 0);
-}
-
-#define arch_atomic64_dec_unless_positive arch_atomic64_dec_unless_positive
-
-static __always_inline s64 arch_atomic64_dec_if_positive(atomic64_t *v)
-{
-       s64 prev;
-       long rc;
-
-	_arch_atomic_dec_if_positive(prev, rc, v->counter, "d");
-
-	return prev - 1;
-}
-
-#define arch_atomic64_dec_if_positive	arch_atomic64_dec_if_positive
-#endif
 
 #endif /* _ASM_RISCV_ATOMIC_H */

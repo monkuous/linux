@@ -14,7 +14,7 @@
 #include <asm/auxvec.h>
 #include <asm/byteorder.h>
 #include <asm/cacheinfo.h>
-#include <asm/cpufeature.h>
+#include <uapi/asm/hwcap.h>
 
 /*
  * These are used to set parameters in the core dumps.
@@ -22,11 +22,7 @@
 #define ELF_ARCH	EM_RISCV
 
 #ifndef ELF_CLASS
-#ifdef CONFIG_64BIT
-#define ELF_CLASS	ELFCLASS64
-#else
 #define ELF_CLASS	ELFCLASS32
-#endif
 #endif
 
 #define ELF_DATA	ELFDATA2LSB
@@ -34,11 +30,8 @@
 /*
  * This is used to ensure we don't load something for the wrong architecture.
  */
-#define elf_check_arch(x) (((x)->e_machine == EM_RISCV) && \
+#define elf_check_arch(x) (((x)->e_machine == ELF_ARCH) && \
 			   ((x)->e_ident[EI_CLASS] == ELF_CLASS))
-
-extern bool compat_elf_check_arch(Elf32_Ehdr *hdr);
-#define compat_elf_check_arch	compat_elf_check_arch
 
 #define CORE_DUMP_USE_REGSET
 #define ELF_FDPIC_CORE_EFLAGS	0
@@ -52,18 +45,12 @@ extern bool compat_elf_check_arch(Elf32_Ehdr *hdr);
  */
 #define ELF_ET_DYN_BASE		((DEFAULT_MAP_WINDOW / 3) * 2)
 
-#ifdef CONFIG_64BIT
-#define STACK_RND_MASK		(is_compat_task() ? \
-				 0x7ff >> (PAGE_SHIFT - 12) : \
-				 0x3ffff >> (PAGE_SHIFT - 12))
-#endif
-
 /*
  * Provides information on the available set of ISA extensions to userspace,
  * via a bitmap that corresponds to each single-letter ISA extension.  This is
  * essentially defunct, but will remain for compatibility with userspace.
  */
-#define ELF_HWCAP	riscv_get_elf_hwcap()
+#define ELF_HWCAP	(COMPAT_HWCAP_ISA_I | COMPAT_HWCAP_ISA_A | COMPAT_HWCAP_ISA_A)
 extern unsigned long elf_hwcap;
 
 #define ELF_FDPIC_PLAT_INIT(_r, _exec_map_addr, _interp_map_addr, dynamic_addr) \
@@ -79,8 +66,6 @@ extern unsigned long elf_hwcap;
  * intent than poking at uname or /proc/cpuinfo.
  */
 #define ELF_PLATFORM	(NULL)
-
-#define COMPAT_ELF_PLATFORM	(NULL)
 
 #define ARCH_DLINFO						\
 do {								\
@@ -119,12 +104,10 @@ do {								\
 		NEW_AUX_ENT(AT_IGNORE, 0);			 \
 } while (0)
 
-#ifdef CONFIG_MMU
 #define ARCH_HAS_SETUP_ADDITIONAL_PAGES
 struct linux_binprm;
 extern int arch_setup_additional_pages(struct linux_binprm *bprm,
 	int uses_interp);
-#endif /* CONFIG_MMU */
 
 #define ELF_CORE_COPY_REGS(dest, regs)			\
 do {							\
@@ -132,25 +115,4 @@ do {							\
 		*(struct user_regs_struct *)regs;	\
 } while (0);
 
-#ifdef CONFIG_COMPAT
-
-#define SET_PERSONALITY(ex)					\
-do {	set_compat_task((ex).e_ident[EI_CLASS] == ELFCLASS32);	\
-	if (personality(current->personality) != PER_LINUX32)	\
-		set_personality(PER_LINUX |			\
-			(current->personality & (~PER_MASK)));	\
-} while (0)
-
-#define COMPAT_ELF_ET_DYN_BASE		((TASK_SIZE_32 / 3) * 2)
-
-/* rv32 registers */
-typedef compat_ulong_t			compat_elf_greg_t;
-typedef compat_elf_greg_t		compat_elf_gregset_t[ELF_NGREG];
-
-extern int compat_arch_setup_additional_pages(struct linux_binprm *bprm,
-					      int uses_interp);
-#define compat_arch_setup_additional_pages \
-				compat_arch_setup_additional_pages
-
-#endif /* CONFIG_COMPAT */
 #endif /* _ASM_RISCV_ELF_H */

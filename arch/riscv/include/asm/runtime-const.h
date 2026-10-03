@@ -7,9 +7,7 @@
 #endif
 
 #include <asm/asm.h>
-#include <asm/alternative.h>
 #include <asm/cacheflush.h>
-#include <asm/insn-def.h>
 #include <linux/memory.h>
 #include <asm/text-patching.h>
 
@@ -17,7 +15,8 @@
 
 #define RUNTIME_MAGIC __ASM_STR(0x89ABCDEF)
 
-#ifdef CONFIG_32BIT
+#define RISCV_INSN_NOP4 0x00000013U
+
 #define runtime_const_ptr(sym)						\
 ({									\
 	typeof(sym) __ret;						\
@@ -34,116 +33,6 @@
 		: [__ret] "=r" (__ret));				\
 	__ret;								\
 })
-#else
-/*
- * Loading 64-bit constants into a register from immediates is a non-trivial
- * task on riscv64. To get it somewhat performant, load 32 bits into two
- * different registers and then combine the results.
- *
- * If the processor supports the Zbkb extension, we can combine the final
- * "slli,slli,srli,add" into the single "pack" instruction. If the processor
- * doesn't support Zbkb but does support the Zbb extension, we can
- * combine the final "slli,srli,add" into one instruction "add.uw".
- */
-#define RISCV_RUNTIME_CONST_64_PREAMBLE				\
-	".option push\n\t"					\
-	".option norvc\n\t"					\
-	".option norelax\n\t"					\
-	"1:\t"							\
-	"lui	%[__ret], %%hi(" RUNTIME_MAGIC ")\n\t"		\
-	"lui	%[__tmp], %%hi(" RUNTIME_MAGIC ")\n\t"		\
-	"addiw	%[__ret],%[__ret], %%lo(" RUNTIME_MAGIC ")\n\t"	\
-	"addiw	%[__tmp],%[__tmp], %%lo(" RUNTIME_MAGIC ")\n\t"	\
-
-#define RISCV_RUNTIME_CONST_64_BASE				\
-	"slli	%[__tmp],%[__tmp],32\n\t"			\
-	"slli	%[__ret],%[__ret],32\n\t"			\
-	"srli	%[__ret],%[__ret],32\n\t"			\
-	"add	%[__ret],%[__ret],%[__tmp]\n\t"			\
-
-#define RISCV_RUNTIME_CONST_64_ZBA				\
-	".option push\n\t"					\
-	".option arch,+zba\n\t"					\
-	".option norvc\n\t"					\
-	"slli	%[__tmp],%[__tmp],32\n\t"			\
-	"add.uw %[__ret],%[__ret],%[__tmp]\n\t"			\
-	"nop\n\t"						\
-	"nop\n\t"						\
-	".option pop\n\t"					\
-
-#define RISCV_RUNTIME_CONST_64_ZBKB				\
-	".option push\n\t"					\
-	".option arch,+zbkb\n\t"				\
-	".option norvc\n\t"					\
-	"pack	%[__ret],%[__ret],%[__tmp]\n\t"			\
-	"nop\n\t"						\
-	"nop\n\t"						\
-	"nop\n\t"						\
-	".option pop\n\t"					\
-
-#define RISCV_RUNTIME_CONST_64_POSTAMBLE(sym)			\
-	".option pop\n\t"					\
-	".pushsection runtime_ptr_" #sym ",\"a\"\n\t"		\
-	".long 1b - .\n\t"					\
-	".popsection"						\
-
-#if defined(CONFIG_RISCV_ISA_ZBA) && defined(CONFIG_TOOLCHAIN_HAS_ZBA)	\
-	&& defined(CONFIG_RISCV_ISA_ZBKB)
-#define runtime_const_ptr(sym)						\
-({									\
-	typeof(sym) __ret, __tmp;					\
-	asm_inline(RISCV_RUNTIME_CONST_64_PREAMBLE			\
-		ALTERNATIVE_2(						\
-			RISCV_RUNTIME_CONST_64_BASE,			\
-			RISCV_RUNTIME_CONST_64_ZBA,			\
-			0, RISCV_ISA_EXT_ZBA, 1,			\
-			RISCV_RUNTIME_CONST_64_ZBKB,			\
-			0, RISCV_ISA_EXT_ZBKB, 1			\
-		)							\
-		RISCV_RUNTIME_CONST_64_POSTAMBLE(sym)			\
-		: [__ret] "=r" (__ret), [__tmp] "=r" (__tmp));		\
-	__ret;								\
-})
-#elif defined(CONFIG_RISCV_ISA_ZBA) && defined(CONFIG_TOOLCHAIN_HAS_ZBA)
-#define runtime_const_ptr(sym)						\
-({									\
-	typeof(sym) __ret, __tmp;					\
-	asm_inline(RISCV_RUNTIME_CONST_64_PREAMBLE			\
-		ALTERNATIVE(						\
-			RISCV_RUNTIME_CONST_64_BASE,			\
-			RISCV_RUNTIME_CONST_64_ZBA,			\
-			0, RISCV_ISA_EXT_ZBA, 1				\
-		)							\
-		RISCV_RUNTIME_CONST_64_POSTAMBLE(sym)			\
-		: [__ret] "=r" (__ret), [__tmp] "=r" (__tmp));		\
-	__ret;								\
-})
-#elif defined(CONFIG_RISCV_ISA_ZBKB)
-#define runtime_const_ptr(sym)						\
-({									\
-	typeof(sym) __ret, __tmp;					\
-	asm_inline(RISCV_RUNTIME_CONST_64_PREAMBLE			\
-		ALTERNATIVE(						\
-			RISCV_RUNTIME_CONST_64_BASE,			\
-			RISCV_RUNTIME_CONST_64_ZBKB,			\
-			0, RISCV_ISA_EXT_ZBKB, 1			\
-		)							\
-		RISCV_RUNTIME_CONST_64_POSTAMBLE(sym)			\
-		: [__ret] "=r" (__ret), [__tmp] "=r" (__tmp));		\
-	__ret;								\
-})
-#else
-#define runtime_const_ptr(sym)						\
-({									\
-	typeof(sym) __ret, __tmp;					\
-	asm_inline(RISCV_RUNTIME_CONST_64_PREAMBLE			\
-		RISCV_RUNTIME_CONST_64_BASE				\
-		RISCV_RUNTIME_CONST_64_POSTAMBLE(sym)			\
-		: [__ret] "=r" (__ret), [__tmp] "=r" (__tmp));		\
-	__ret;								\
-})
-#endif
-#endif
 
 #define runtime_const_shift_right_32(val, sym)			\
 ({								\
@@ -250,14 +139,8 @@ static inline void __runtime_fixup_32(__le16 *lui_parcel, __le16 *addi_parcel, u
 
 static inline void __runtime_fixup_ptr(void *where, unsigned long val)
 {
-#ifdef CONFIG_32BIT
-		__runtime_fixup_32(where, where + 4, val);
-		__runtime_fixup_caches(where, 2);
-#else
-		__runtime_fixup_32(where, where + 8, val);
-		__runtime_fixup_32(where + 4, where + 12, val >> 32);
-		__runtime_fixup_caches(where, 4);
-#endif
+	__runtime_fixup_32(where, where + 4, val);
+	__runtime_fixup_caches(where, 2);
 }
 
 /*
@@ -266,11 +149,11 @@ static inline void __runtime_fixup_ptr(void *where, unsigned long val)
  */
 static inline void __runtime_fixup_shift(void *where, unsigned long val)
 {
-	__le16 *parcel = where;
+	__le32 *ptr = where;
 	__le32 res;
 	u32 insn;
 
-	insn = (u32)le16_to_cpu(parcel[0]) | (u32)le16_to_cpu(parcel[1]) << 16;
+	insn = le32_to_cpu(ptr[0]);
 
 	insn &= 0xfe0fffff;
 	insn |= (val & 0b11111) << 20;

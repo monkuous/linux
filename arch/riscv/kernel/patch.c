@@ -25,8 +25,6 @@ struct patch_insn {
 
 int riscv_patch_in_stop_machine = false;
 
-#ifdef CONFIG_MMU
-
 static inline bool is_kernel_exittext(uintptr_t addr)
 {
 	return system_state < SYSTEM_RUNNING &&
@@ -164,21 +162,6 @@ static int __patch_insn_write(void *addr, const void *insn, size_t len)
 	return ret;
 }
 NOKPROBE_SYMBOL(__patch_insn_write);
-#else
-static int __patch_insn_set(void *addr, u8 c, size_t len)
-{
-	memset(addr, c, len);
-
-	return 0;
-}
-NOKPROBE_SYMBOL(__patch_insn_set);
-
-static int __patch_insn_write(void *addr, const void *insn, size_t len)
-{
-	return copy_to_kernel_nofault(addr, insn, len);
-}
-NOKPROBE_SYMBOL(__patch_insn_write);
-#endif /* CONFIG_MMU */
 
 static int patch_insn_set(void *addr, u8 c, size_t len)
 {

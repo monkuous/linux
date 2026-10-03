@@ -40,29 +40,6 @@ do {							\
 		flush_icache_mm(vma->vm_mm, 0);		\
 } while (0)
 
-#if defined(CONFIG_64BIT) && defined(CONFIG_MMU)
-/* This is accessed in assembly code. cpumask_var_t would be too complex. */
-extern DECLARE_BITMAP(new_valid_map_cpus, NR_CPUS);
-extern char _end[];
-static inline void mark_new_valid_map(void)
-{
-	/*
-	 * We don't care if concurrently a cpu resets this value since
-	 * the only place this can happen is in handle_exception() where
-	 * an sfence.vma is emitted.
-	 */
-	bitmap_fill(new_valid_map_cpus, NR_CPUS);
-}
-#define flush_cache_vmap flush_cache_vmap
-static inline void flush_cache_vmap(unsigned long start, unsigned long end)
-{
-	if (is_vmalloc_or_module_addr((void *)start) ||
-	    (start >= VMEMMAP_START && end <= VMEMMAP_END))
-		mark_new_valid_map();
-}
-#define flush_cache_vmap_early(start, end)	local_flush_tlb_kernel_range(start, end)
-#endif
-
 #ifndef CONFIG_SMP
 
 #define flush_icache_all() local_flush_icache_all()
@@ -86,17 +63,7 @@ static inline void flush_icache_range(unsigned long start, unsigned long end)
 }
 
 extern unsigned int riscv_cbom_block_size;
-extern unsigned int riscv_cboz_block_size;
-extern unsigned int riscv_cbop_block_size;
 void riscv_init_cbo_blocksizes(void);
-
-#ifdef CONFIG_RISCV_DMA_NONCOHERENT
-void riscv_noncoherent_supported(void);
-void __init riscv_set_dma_cache_alignment(void);
-#else
-static inline void riscv_noncoherent_supported(void) {}
-static inline void riscv_set_dma_cache_alignment(void) {}
-#endif
 
 /*
  * Bits in sys_riscv_flush_icache()'s flags argument.

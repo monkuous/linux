@@ -15,7 +15,6 @@
 #include <asm/cache.h>
 #include <asm/thread_info.h>
 #include <asm/set_memory.h>
-#include "image-vars.h"
 
 #include <linux/sizes.h>
 OUTPUT_ARCH(riscv)
@@ -54,16 +53,6 @@ SECTIONS
 	}
 
 	. = ALIGN(8);
-	__soc_early_init_table : {
-		__soc_early_init_table_start = .;
-		KEEP(*(__soc_early_init_table))
-		__soc_early_init_table_end = .;
-	}
-	__soc_builtin_dtb_table : {
-		__soc_builtin_dtb_table_start = .;
-		KEEP(*(__soc_builtin_dtb_table))
-		__soc_builtin_dtb_table_end = .;
-	}
 	/* we have to discard exit text and such at runtime, not link time */
 	__exittext_begin = .;
 	.exit.text :
@@ -74,17 +63,9 @@ SECTIONS
 
 	__init_text_end = .;
 	. = ALIGN(SECTION_ALIGN);
-#ifdef CONFIG_EFI
-	. = ALIGN(PECOFF_SECTION_ALIGNMENT);
-	__pecoff_text_end = .;
-#endif
 	/* Start of init data section */
 	__init_data_begin = .;
 	INIT_DATA_SECTION(16)
-
-	.init.pi : {
-		KEEP(*(.init.pi*))
-	}
 
 	.init.bss : {
 		KEEP(*(.init.bss*))	/* from the EFI stub */
@@ -111,11 +92,6 @@ SECTIONS
 	__init_data_end = .;
 
 	. = ALIGN(8);
-	.alternative : {
-		__alt_start = .;
-		KEEP(*(.alternative))
-		__alt_end = .;
-	}
 	__init_end = .;
 
 	/* Start of data section */
@@ -136,32 +112,11 @@ SECTIONS
 
 	.got : { *(.got*) }
 
-#ifdef CONFIG_RELOCATABLE
-	.data.rel : { *(.data.rel*) }
-	.plt : { *(.plt) }
-	.dynamic : { *(.dynamic) }
-	.dynsym : { *(.dynsym) }
-	.dynstr : { *(.dynstr) }
-	.hash : { *(.hash) }
-	.gnu.hash : { *(.gnu.hash) }
-#endif
-
-#ifdef CONFIG_EFI
-	.pecoff_edata_padding : { BYTE(0); . = ALIGN(PECOFF_FILE_ALIGNMENT); }
-	__pecoff_data_raw_size = ABSOLUTE(. - __pecoff_text_end);
-	__pecoff_data_raw_end = ABSOLUTE(.);
-#endif
-
 	/* End of data section */
 	_edata = .;
 
 	BSS_SECTION(PAGE_SIZE, PAGE_SIZE, 0)
 
-#ifdef CONFIG_EFI
-	. = ALIGN(PECOFF_SECTION_ALIGNMENT);
-	__pecoff_data_virt_size = ABSOLUTE(. - __pecoff_text_end);
-	__pecoff_data_virt_end = ABSOLUTE(.);
-#endif
 	_end = .;
 
 	STABS_DEBUG

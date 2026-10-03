@@ -11,16 +11,12 @@
 
 bool is_swbp_insn(uprobe_opcode_t *insn)
 {
-#ifdef CONFIG_RISCV_ISA_C
-	return (*insn & 0xffff) == UPROBE_SWBP_INSN;
-#else
 	return *insn == UPROBE_SWBP_INSN;
-#endif
 }
 
 bool is_trap_insn(uprobe_opcode_t *insn)
 {
-	return riscv_insn_is_ebreak(*insn) || riscv_insn_is_c_ebreak(*insn);
+	return riscv_insn_is_ebreak(*insn);
 }
 
 unsigned long uprobe_get_swbp_addr(struct pt_regs *regs)
@@ -34,8 +30,6 @@ int arch_uprobe_analyze_insn(struct arch_uprobe *auprobe, struct mm_struct *mm,
 	probe_opcode_t opcode;
 
 	opcode = *(probe_opcode_t *)(&auprobe->insn[0]);
-
-	auprobe->insn_size = GET_INSN_LENGTH(opcode);
 
 	switch (riscv_probe_decode_insn(&opcode, &auprobe->api)) {
 	case INSN_REJECTED:
@@ -75,7 +69,7 @@ int arch_uprobe_post_xol(struct arch_uprobe *auprobe, struct pt_regs *regs)
 	WARN_ON_ONCE(current->thread.bad_cause != UPROBE_TRAP_NR);
 	current->thread.bad_cause = utask->autask.saved_cause;
 
-	instruction_pointer_set(regs, utask->vaddr + auprobe->insn_size);
+	instruction_pointer_set(regs, utask->vaddr + INSN_LENGTH);
 
 	return 0;
 }
@@ -173,8 +167,8 @@ void arch_uprobe_copy_ixol(struct page *page, unsigned long vaddr,
 
 	/* Add ebreak behind opcode to simulate singlestep */
 	if (vaddr) {
-		dst += GET_INSN_LENGTH(*(probe_opcode_t *)src);
-		*(uprobe_opcode_t *)dst = __BUG_INSN_32;
+		dst += INSN_LENGTH;
+		*(uprobe_opcode_t *)dst = __BUG_INSN;
 	}
 
 	flush_icache_range(start, start + len);

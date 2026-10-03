@@ -9,7 +9,6 @@
 #include <linux/irqchip.h>
 #include <linux/irqdomain.h>
 #include <linux/module.h>
-#include <linux/scs.h>
 #include <linux/seq_file.h>
 #include <asm/sbi.h>
 #include <asm/smp.h>
@@ -69,44 +68,8 @@ int riscv_get_hart_index(struct fwnode_handle *fwnode, u32 logical_index,
 #ifdef CONFIG_IRQ_STACKS
 #include <asm/irq_stack.h>
 
-DECLARE_PER_CPU(ulong *, irq_shadow_call_stack_ptr);
-
-#ifdef CONFIG_SHADOW_CALL_STACK
-DEFINE_PER_CPU(ulong *, irq_shadow_call_stack_ptr);
-#endif
-
-static void __init init_irq_scs(void)
-{
-	int cpu;
-	void *s;
-
-	if (!scs_is_enabled())
-		return;
-
-	for_each_possible_cpu(cpu) {
-		s = scs_alloc(cpu_to_node(cpu));
-		if (!s)
-			panic("Failed to allocate IRQ shadow call stack resources\n");
-		per_cpu(irq_shadow_call_stack_ptr, cpu) = s;
-	}
-}
-
 DEFINE_PER_CPU(ulong *, irq_stack_ptr);
 
-#ifdef CONFIG_VMAP_STACK
-static void __init init_irq_stacks(void)
-{
-	int cpu;
-	ulong *p;
-
-	for_each_possible_cpu(cpu) {
-		p = arch_alloc_vmap_stack(IRQ_STACK_SIZE, cpu_to_node(cpu));
-		if (!p)
-			panic("Failed to allocate IRQ stack resources\n");
-		per_cpu(irq_stack_ptr, cpu) = p;
-	}
-}
-#else
 /* irq stack only needs to be 16 byte aligned - not IRQ_STACK_SIZE aligned. */
 DEFINE_PER_CPU_ALIGNED(ulong [IRQ_STACK_SIZE/sizeof(ulong)], irq_stack);
 
@@ -117,7 +80,6 @@ static void __init init_irq_stacks(void)
 	for_each_possible_cpu(cpu)
 		per_cpu(irq_stack_ptr, cpu) = per_cpu(irq_stack, cpu);
 }
-#endif /* CONFIG_VMAP_STACK */
 
 #ifdef CONFIG_SOFTIRQ_ON_OWN_STACK
 static void ___do_softirq(struct pt_regs *regs)
@@ -147,7 +109,6 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 
 void __init init_IRQ(void)
 {
-	init_irq_scs();
 	init_irq_stacks();
 	irqchip_init();
 	if (!handle_arch_irq)

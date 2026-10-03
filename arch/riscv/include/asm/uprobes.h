@@ -9,13 +9,8 @@
 
 #define MAX_UINSN_BYTES		8
 
-#ifdef CONFIG_RISCV_ISA_C
-#define UPROBE_SWBP_INSN	__BUG_INSN_16
-#define UPROBE_SWBP_INSN_SIZE	2
-#else
-#define UPROBE_SWBP_INSN	__BUG_INSN_32
-#define UPROBE_SWBP_INSN_SIZE	4
-#endif
+#define UPROBE_SWBP_INSN	__BUG_INSN
+#define UPROBE_SWBP_INSN_SIZE	INSN_LENGTH
 #define UPROBE_XOL_SLOT_BYTES	MAX_UINSN_BYTES
 
 typedef u32 uprobe_opcode_t;
@@ -30,7 +25,6 @@ struct arch_uprobe {
 		u8 ixol[MAX_UINSN_BYTES];
 	};
 	struct arch_probe_insn api;
-	unsigned long insn_size;
 	bool simulate;
 };
 

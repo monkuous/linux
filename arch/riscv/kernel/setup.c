@@ -8,7 +8,6 @@
  *  Nick Kossifidis <mick@ics.forth.gr>
  */
 
-#include <linux/acpi.h>
 #include <linux/cpu.h>
 #include <linux/init.h>
 #include <linux/mm.h>
@@ -18,16 +17,12 @@
 #include <linux/of_fdt.h>
 #include <linux/sched/task.h>
 #include <linux/smp.h>
-#include <linux/efi.h>
 #include <linux/crash_dump.h>
 #include <linux/panic_notifier.h>
 #include <linux/jump_label.h>
 #include <linux/gcd.h>
 
-#include <asm/acpi.h>
-#include <asm/alternative.h>
 #include <asm/cacheflush.h>
-#include <asm/cpufeature.h>
 #include <asm/early_ioremap.h>
 #include <asm/pgtable.h>
 #include <asm/setup.h>
@@ -36,8 +31,6 @@
 #include <asm/sbi.h>
 #include <asm/tlbflush.h>
 #include <asm/thread_info.h>
-#include <asm/kasan.h>
-#include <asm/efi.h>
 
 #include "head.h"
 
@@ -267,43 +260,6 @@ static void __init parse_dtb(void)
 	}
 }
 
-#if defined(CONFIG_RISCV_COMBO_SPINLOCKS)
-DEFINE_STATIC_KEY_TRUE(qspinlock_key);
-EXPORT_SYMBOL(qspinlock_key);
-#endif
-
-static void __init riscv_spinlock_init(void)
-{
-	char *using_ext = NULL;
-
-	if (IS_ENABLED(CONFIG_RISCV_TICKET_SPINLOCKS)) {
-		pr_info("Ticket spinlock: enabled\n");
-		return;
-	}
-
-	if (IS_ENABLED(CONFIG_RISCV_ISA_ZABHA) &&
-	    IS_ENABLED(CONFIG_RISCV_ISA_ZACAS) &&
-	    IS_ENABLED(CONFIG_TOOLCHAIN_HAS_ZACAS) &&
-	    riscv_isa_extension_available(NULL, ZABHA) &&
-	    riscv_isa_extension_available(NULL, ZACAS)) {
-		using_ext = "using Zabha";
-	} else if (riscv_isa_extension_available(NULL, ZICCRSE)) {
-		using_ext = "using Ziccrse";
-	}
-#if defined(CONFIG_RISCV_COMBO_SPINLOCKS)
-	else {
-		static_branch_disable(&qspinlock_key);
-		pr_info("Ticket spinlock: enabled\n");
-		return;
-	}
-#endif
-
-	if (!using_ext)
-		pr_err("Queued spinlock without Zabha or Ziccrse");
-	else
-		pr_info("Queued spinlock %s: enabled\n", using_ext);
-}
-
 extern void __init init_rt_signal_env(void);
 
 void __init setup_arch(char **cmdline_p)
@@ -318,54 +274,22 @@ void __init setup_arch(char **cmdline_p)
 	jump_label_init();
 	parse_early_param();
 
-	efi_init();
 	paging_init();
 
-	acpi_table_upgrade();
-
-	/* Parse the ACPI tables for possible boot-time configuration */
-	acpi_boot_table_init();
-
-	if (acpi_disabled) {
-#if IS_ENABLED(CONFIG_BUILTIN_DTB)
-		unflatten_and_copy_device_tree();
-#else
-		unflatten_device_tree();
-#endif
-	}
+	unflatten_device_tree();
 
 	misc_mem_init();
 
 	init_resources();
 
-#ifdef CONFIG_KASAN
-	kasan_init();
-#endif
-
 #ifdef CONFIG_SMP
 	setup_smp();
 #endif
 
-	if (!acpi_disabled) {
-		acpi_init_rintc_map();
-		acpi_map_cpus_to_nodes();
-	}
-
 	riscv_init_cbo_blocksizes();
-	riscv_fill_hwcap();
-	apply_boot_alternatives();
 	init_rt_signal_env();
 
-	if (IS_ENABLED(CONFIG_RISCV_ISA_ZICBOM) &&
-	    riscv_isa_extension_available(NULL, ZICBOM))
-		riscv_noncoherent_supported();
-	riscv_set_dma_cache_alignment();
-
-	riscv_user_isa_enable();
-	riscv_spinlock_init();
-
-	if (!IS_ENABLED(CONFIG_RISCV_ISA_ZBB) || !riscv_isa_extension_available(NULL, ZBB))
-		static_branch_disable(&efficient_ffs_key);
+	static_branch_disable(&efficient_ffs_key);
 }
 
 bool arch_cpu_is_hotpluggable(int cpu)
@@ -377,33 +301,7 @@ void free_initmem(void)
 {
 	if (IS_ENABLED(CONFIG_STRICT_KERNEL_RWX)) {
 		set_kernel_memory(lm_alias(__init_begin), lm_alias(__init_end), set_memory_rw_nx);
-		if (IS_ENABLED(CONFIG_64BIT))
-			set_kernel_memory(__init_begin, __init_end, set_memory_nx);
 	}
 
 	free_initmem_default(POISON_FREE_INITMEM);
 }
-
-static int dump_kernel_offset(struct notifier_block *self,
-			      unsigned long v, void *p)
-{
-	pr_emerg("Kernel Offset: 0x%lx from 0x%lx\n",
-		 kernel_map.virt_offset,
-		 KERNEL_LINK_ADDR);
-
-	return 0;
-}
-
-static struct notifier_block kernel_offset_notifier = {
-	.notifier_call = dump_kernel_offset
-};
-
-static int __init register_kernel_offset_dumper(void)
-{
-	if (IS_ENABLED(CONFIG_RANDOMIZE_BASE))
-		atomic_notifier_chain_register(&panic_notifier_list,
-					       &kernel_offset_notifier);
-
-	return 0;
-}
-device_initcall(register_kernel_offset_dumper);
