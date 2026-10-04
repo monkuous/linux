@@ -162,7 +162,12 @@ static void __init setup_bootmem(void)
 	 *  - This memory belongs to high memory, which is not supported
 	 */
 	max_mapped_addr = __va_to_pa_nodebug(-PAGE_SIZE);
-	memblock_reserve(max_mapped_addr, (phys_addr_t)-max_mapped_addr);
+	if (memblock_end_of_DRAM() > max_mapped_addr) {
+		memblock_cap_memory_range(phys_ram_base,
+					  max_mapped_addr - phys_ram_base);
+		pr_warn("Physical memory overflows the linear mapping size: "
+			"region above %pa removed\n", &max_mapped_addr);
+	}
 
 	phys_ram_end = memblock_end_of_DRAM();
 	min_low_pfn = PFN_UP(phys_ram_base);
