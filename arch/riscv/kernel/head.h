@@ -8,11 +8,12 @@
 #include <linux/linkage.h>
 #include <linux/init.h>
 
-extern atomic_t hart_lottery;
+extern atomic_long_t hart_lottery;
 
 asmlinkage void __init setup_vm(uintptr_t dtb_pa);
 
-extern void *__cpu_spinwait_stack_pointer[];
-extern void *__cpu_spinwait_task_pointer[];
+extern void *__cpu_spinwait_stack_pointer;
+extern void *__cpu_spinwait_task_pointer;
+extern atomic_long_t __cpu_spinwait_current_hart;
 
 #endif /* __ASM_HEAD_H */

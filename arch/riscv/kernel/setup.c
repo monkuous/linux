@@ -39,7 +39,7 @@
  * This is used before the kernel initializes the BSS so it can't be in the
  * BSS.
  */
-atomic_t hart_lottery __section(".sdata");
+atomic_long_t hart_lottery __section(".sdata");
 unsigned long boot_cpu_hartid;
 EXPORT_SYMBOL_GPL(boot_cpu_hartid);
 

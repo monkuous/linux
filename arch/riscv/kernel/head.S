@@ -163,17 +163,22 @@ SYM_CODE_START(_start_kernel)
 	/* Load the global pointer */
 	load_global_pointer
 
-	li t0, CONFIG_NR_CPUS
-	blt a0, t0, .Lgood_cores
-	tail .Lsecondary_park
-.Lgood_cores:
+	/* Verify that our hartid is valid (i.e. not equal to INVALID_HARTID) */
+	not t0, a0
+	beqz t0, .Lsecondary_park
 
-	/* The lottery system is only required for spinwait booting method */
 	/* Pick one hart to run the main boot sequence */
 	la a3, hart_lottery
-	li a2, 1
-	amoadd.w a3, a2, (a3)
-	bnez a3, .Lsecondary_start
+1:	lr.w t0, (a3)
+	addi t1, t0, 1
+	sc.w t1, t1, (a3)
+	bnez t1, 1b
+#ifdef CONFIG_SMP
+	bnez t1, .Lsecondary_start
+	fence rw, rw
+#else /* CONFIG_SMP */
+	bnez t1, .Lsecondary_park
+#endif /* CONFIG_SMP */
 
 	/* Clear BSS for flat non-ELF images */
 	la a3, __bss_start
@@ -184,6 +189,7 @@ SYM_CODE_START(_start_kernel)
 	add a3, a3, RISCV_SZPTR
 	blt a3, a4, .Lclear_bss
 .Lclear_bss_done:
+
 	la a2, boot_cpu_hartid
 	REG_S a0, (a2)
 
@@ -215,23 +221,45 @@ SYM_CODE_START(_start_kernel)
 	la a3, .Lsecondary_park
 	csrw CSR_TVEC, a3
 
-	slli a3, a0, LGREG
 	la a1, __cpu_spinwait_stack_pointer
 	la a2, __cpu_spinwait_task_pointer
-	add a1, a3, a1
-	add a2, a3, a2
+	la a3, __cpu_spinwait_current_hart
 
 	/*
 	 * This hart didn't win the lottery, so we wait for the winning hart to
 	 * get far enough along the boot process that it should continue.
 	 */
 .Lwait_for_cpu_up:
-	/* FIXME: We should WFI to save some energy here. */
+	REG_L t0, (a3)
+	beq t0, a0, .Laccept_boot_info
+.option push
+.option arch, +zihintpause
+	pause
+.option pop
+	j .Lwait_for_cpu_up
+.Laccept_boot_info:
+	fence rw, rw
+
+	/*
+	 * It's our turn to boot. Get the boot info as quickly as possible.
+	 */
+
 	REG_L sp, (a1)
 	REG_L tp, (a2)
-	beqz sp, .Lwait_for_cpu_up
-	beqz tp, .Lwait_for_cpu_up
-	fence
+
+	/*
+	 * Tell the boot cpu that we've accepted our boot info. Use an xchg
+	 * and verify the result to make sure the boot cpu didn't decide
+	 * to time us out (which would make our boot info invalid).
+	 */
+
+	not t0, zero
+	fence rw, rw
+1:	lr.w t1, (a3)
+	bne t1, a0, .Lsecondary_park
+	sc.w t1, t0, (a3)
+	bnez t1, 1b
+	fence rw, rw
 
 	tail .Lsecondary_start_common
 
