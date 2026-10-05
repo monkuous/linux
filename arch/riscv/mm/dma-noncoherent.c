@@ -27,13 +27,6 @@ asm volatile(								\
 	    "r"((unsigned long)(_start) + (_size))			\
 	: "a0")
 
-static inline void arch_dma_cache_wback(phys_addr_t paddr, size_t size)
-{
-	void *vaddr = phys_to_virt(paddr);
-
-	CMO_OP("cbo.clean", vaddr, size, riscv_cbom_block_size);
-}
-
 static inline void arch_dma_cache_inv(phys_addr_t paddr, size_t size)
 {
 	void *vaddr = phys_to_virt(paddr);
@@ -41,49 +34,9 @@ static inline void arch_dma_cache_inv(phys_addr_t paddr, size_t size)
 	CMO_OP("cbo.inval", vaddr, size, riscv_cbom_block_size);
 }
 
-static inline void arch_dma_cache_wback_inv(phys_addr_t paddr, size_t size)
-{
-	void *vaddr = phys_to_virt(paddr);
-
-	CMO_OP("cbo.flush", vaddr, size, riscv_cbom_block_size);
-}
-
-static inline bool arch_sync_dma_clean_before_fromdevice(void)
-{
-	return true;
-}
-
 static inline bool arch_sync_dma_cpu_needs_post_dma_flush(void)
 {
 	return true;
-}
-
-void arch_sync_dma_for_device(phys_addr_t paddr, size_t size,
-			      enum dma_data_direction dir)
-{
-	switch (dir) {
-	case DMA_TO_DEVICE:
-		arch_dma_cache_wback(paddr, size);
-		break;
-
-	case DMA_FROM_DEVICE:
-		if (!arch_sync_dma_clean_before_fromdevice()) {
-			arch_dma_cache_inv(paddr, size);
-			break;
-		}
-		fallthrough;
-
-	case DMA_BIDIRECTIONAL:
-		/* Skip the invalidate here if it's done later */
-		if (arch_sync_dma_cpu_needs_post_dma_flush())
-			arch_dma_cache_wback(paddr, size);
-		else
-			arch_dma_cache_wback_inv(paddr, size);
-		break;
-
-	default:
-		break;
-	}
 }
 
 void arch_sync_dma_for_cpu(phys_addr_t paddr, size_t size,

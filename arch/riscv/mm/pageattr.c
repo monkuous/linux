@@ -122,19 +122,19 @@ static int __set_memory(unsigned long addr, int numpages, pgprot_t set_mask,
 
 int set_memory_rw_nx(unsigned long addr, int numpages)
 {
-	return __set_memory(addr, numpages, __pgprot(_PAGE_READ | _PAGE_WRITE),
+	return __set_memory(addr, numpages, __pgprot(_PAGE_ACCESSED | _PAGE_DIRTY | _PAGE_PRESENT | _PAGE_WRITE),
 			    __pgprot(_PAGE_EXEC));
 }
 
 int set_memory_ro(unsigned long addr, int numpages)
 {
-	return __set_memory(addr, numpages, __pgprot(_PAGE_READ),
-			    __pgprot(_PAGE_WRITE));
+	return __set_memory(addr, numpages, __pgprot(_PAGE_ACCESSED | _PAGE_PRESENT),
+			    __pgprot(_PAGE_DIRTY | _PAGE_WRITE));
 }
 
 int set_memory_rw(unsigned long addr, int numpages)
 {
-	return __set_memory(addr, numpages, __pgprot(_PAGE_READ | _PAGE_WRITE),
+	return __set_memory(addr, numpages, __pgprot(_PAGE_ACCESSED | _PAGE_DIRTY | _PAGE_PRESENT | _PAGE_WRITE),
 			    __pgprot(0));
 }
 
@@ -151,7 +151,7 @@ int set_memory_nx(unsigned long addr, int numpages)
 int set_direct_map_invalid_noflush(struct page *page)
 {
 	return __set_memory((unsigned long)page_address(page), 1,
-			    __pgprot(0), __pgprot(_PAGE_PRESENT));
+			    __pgprot(0), __pgprot(_PAGE_ACCESSED | _PAGE_PRESENT));
 }
 
 int set_direct_map_default_noflush(struct page *page)
@@ -169,7 +169,7 @@ int set_direct_map_valid_noflush(struct page *page, unsigned nr, bool valid)
 		clear = __pgprot(_PAGE_EXEC);
 	} else {
 		set = __pgprot(0);
-		clear = __pgprot(_PAGE_PRESENT);
+		clear = __pgprot(_PAGE_ACCESSED | _PAGE_PRESENT);
 	}
 
 	return __set_memory((unsigned long)page_address(page), nr, set, clear);
@@ -183,9 +183,9 @@ static int debug_pagealloc_set_page(pte_t *pte, unsigned long addr, void *data)
 	unsigned long val = pte_val(ptep_get(pte));
 
 	if (enable)
-		val |= _PAGE_PRESENT;
+		val |= _PAGE_ACCESSED | _PAGE_PRESENT;
 	else
-		val &= ~_PAGE_PRESENT;
+		val &= ~(_PAGE_ACCESSED | _PAGE_PRESENT);
 
 	set_pte(pte, __pte(val));
 

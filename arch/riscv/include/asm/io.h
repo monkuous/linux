@@ -29,7 +29,7 @@
 #define PCI_IOBASE		((void __iomem *)PCI_IO_START)
 
 #define ioremap_wc(addr, size)	\
-	ioremap_prot((addr), (size), __pgprot(_PAGE_KERNEL_NC))
+	ioremap_prot((addr), (size), __pgprot(_PAGE_KERNEL))
 
 /*
  * Emulation routines for the port-mapped IO space used by some PCI drivers.

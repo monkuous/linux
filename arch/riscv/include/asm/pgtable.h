@@ -76,39 +76,39 @@ extern struct pt_alloc_ops pt_ops __meminitdata;
 #define USER_PTRS_PER_PGD   (TASK_SIZE / PGDIR_SIZE)
 
 /* Page protection bits */
-#define _PAGE_BASE	(_PAGE_PRESENT | _PAGE_ACCESSED | _PAGE_USER)
+#define _PAGE_BASE	(_PAGE_ACCESSED | _PAGE_PRESENT)
 
-#define PAGE_NONE		__pgprot(_PAGE_PROT_NONE | _PAGE_READ)
-#define PAGE_READ		__pgprot(_PAGE_BASE | _PAGE_READ)
-#define PAGE_WRITE		__pgprot(_PAGE_BASE | _PAGE_READ | _PAGE_WRITE)
+#define PAGE_NONE		__pgprot(_PAGE_PROT_NONE)
+#define PAGE_READ		__pgprot(_PAGE_BASE)
+#define PAGE_WRITE		__pgprot(_PAGE_BASE | _PAGE_WRITE)
 #define PAGE_EXEC		__pgprot(_PAGE_BASE | _PAGE_EXEC)
-#define PAGE_READ_EXEC		__pgprot(_PAGE_BASE | _PAGE_READ | _PAGE_EXEC)
-#define PAGE_WRITE_EXEC		__pgprot(_PAGE_BASE | _PAGE_READ |	\
-					 _PAGE_EXEC | _PAGE_WRITE)
-#define PAGE_SHADOWSTACK       __pgprot(_PAGE_BASE | _PAGE_WRITE)
+#define PAGE_READ_EXEC		__pgprot(_PAGE_BASE | _PAGE_EXEC)
+#define PAGE_WRITE_EXEC		__pgprot(_PAGE_BASE | _PAGE_EXEC | _PAGE_WRITE)
+#define PAGE_SHADOWSTACK       __pgprot((_PAGE_BASE & ~_PAGE_ACCESSED) |	\
+					 _PAGE_WRITE)
 
 #define PAGE_COPY		PAGE_READ
 #define PAGE_COPY_EXEC		PAGE_READ_EXEC
 #define PAGE_SHARED		PAGE_WRITE
 #define PAGE_SHARED_EXEC	PAGE_WRITE_EXEC
 
-#define _PAGE_KERNEL		(_PAGE_READ \
-				| _PAGE_WRITE \
-				| _PAGE_PRESENT \
-				| _PAGE_ACCESSED \
+#define _PAGE_KERNEL		(_PAGE_ACCESSED \
 				| _PAGE_DIRTY \
-				| _PAGE_GLOBAL)
+				| _PAGE_KMODE \
+				| _PAGE_GLOBAL \
+				| _PAGE_PRESENT \
+				| _PAGE_WRITE)
 
 #define PAGE_KERNEL		__pgprot(_PAGE_KERNEL)
-#define PAGE_KERNEL_READ	__pgprot(_PAGE_KERNEL & ~_PAGE_WRITE)
+#define PAGE_KERNEL_READ	__pgprot(_PAGE_KERNEL &	\
+					 ~(_PAGE_DIRTY | _PAGE_WRITE))
 #define PAGE_KERNEL_EXEC	__pgprot(_PAGE_KERNEL | _PAGE_EXEC)
-#define PAGE_KERNEL_READ_EXEC	__pgprot((_PAGE_KERNEL & ~_PAGE_WRITE) \
-					 | _PAGE_EXEC)
+#define PAGE_KERNEL_READ_EXEC	__pgprot((_PAGE_KERNEL | _PAGE_EXEC) \
+					 & ~(_PAGE_DIRTY | _PAGE_WRITE))
 
 #define PAGE_TABLE		__pgprot(_PAGE_TABLE)
 
-#define _PAGE_KERNEL_NC ((_PAGE_KERNEL & ~_PAGE_MTMASK) | _PAGE_NOCACHE)
-#define _PAGE_IOREMAP	((_PAGE_KERNEL & ~_PAGE_MTMASK) | _PAGE_IO)
+#define _PAGE_IOREMAP		(_PAGE_KERNEL | _PAGE_IO)
 #define PAGE_KERNEL_IO		__pgprot(_PAGE_IOREMAP)
 
 extern pgd_t swapper_pg_dir[];
@@ -127,7 +127,7 @@ static inline int pmd_none(pmd_t pmd)
 
 static inline int pmd_bad(pmd_t pmd)
 {
-	return !pmd_present(pmd) || (pmd_val(pmd) & _PAGE_LEAF);
+	return !pmd_present(pmd);
 }
 
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
@@ -231,17 +231,12 @@ static inline int pte_exec(pte_t pte)
 
 static inline int pte_user(pte_t pte)
 {
-	return pte_val(pte) & _PAGE_USER;
-}
-
-static inline int pte_huge(pte_t pte)
-{
-	return pte_present(pte) && (pte_val(pte) & _PAGE_LEAF);
+	return (pte_val(pte) & _PAGE_KMODE) == 0;
 }
 
 static inline int pte_dirty(pte_t pte)
 {
-	return pte_val(pte) & _PAGE_DIRTY;
+	return pte_val(pte) & (_PAGE_DIRTY | _PAGE_MODIFIED);
 }
 
 static inline int pte_young(pte_t pte)
@@ -258,7 +253,12 @@ static inline int pte_special(pte_t pte)
 
 static inline pte_t pte_wrprotect(pte_t pte)
 {
-	return __pte((pte_val(pte) & ~(_PAGE_WRITE)) | (_PAGE_READ));
+	unsigned long val = pte_val(pte);
+
+	if (val & _PAGE_DIRTY)
+		val |= _PAGE_MODIFIED;
+
+	return __pte(val & ~(_PAGE_DIRTY | _PAGE_WRITE));
 }
 
 /* static inline pte_t pte_mkread(pte_t pte) */
@@ -269,24 +269,34 @@ pte_t pte_mkwrite(pte_t pte, struct vm_area_struct *vma);
 
 static inline pte_t pte_mkwrite_novma(pte_t pte)
 {
-	return __pte(pte_val(pte) | _PAGE_WRITE);
+	unsigned long val = pte_val(pte);
+
+	if (val & _PAGE_MODIFIED)
+		val |= _PAGE_DIRTY;
+
+	return __pte(val | _PAGE_WRITE);
 }
 
 static inline pte_t pte_mkwrite_shstk(pte_t pte)
 {
-	return __pte((pte_val(pte) & ~(_PAGE_LEAF)) | _PAGE_WRITE);
+	return __pte((pte_val(pte) & ~(_PAGE_ACCESSED)) | _PAGE_WRITE);
 }
 
 /* static inline pte_t pte_mkexec(pte_t pte) */
 
 static inline pte_t pte_mkdirty(pte_t pte)
 {
-	return __pte(pte_val(pte) | _PAGE_DIRTY);
+	unsigned long val = pte_val(pte);
+
+	if (val & _PAGE_WRITE)
+		val |= _PAGE_DIRTY;
+
+	return __pte(val | _PAGE_MODIFIED);
 }
 
 static inline pte_t pte_mkclean(pte_t pte)
 {
-	return __pte(pte_val(pte) & ~(_PAGE_DIRTY));
+	return __pte(pte_val(pte) & ~(_PAGE_DIRTY | _PAGE_MODIFIED));
 }
 
 static inline pte_t pte_mkyoung(pte_t pte)
@@ -302,11 +312,6 @@ static inline pte_t pte_mkold(pte_t pte)
 static inline pte_t pte_mkspecial(pte_t pte)
 {
 	return __pte(pte_val(pte) | _PAGE_SPECIAL);
-}
-
-static inline pte_t pte_mkhuge(pte_t pte)
-{
-	return pte;
 }
 
 #ifdef CONFIG_ARCH_HAS_PTE_PROTNONE
@@ -325,8 +330,24 @@ static inline int pmd_protnone(pmd_t pmd)
 static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 {
 	unsigned long newprot_val = pgprot_val(newprot);
+	unsigned long val = pte_val(pte);
 
-	return __pte((pte_val(pte) & _PAGE_CHG_MASK) | newprot_val);
+	if (val & _PAGE_DIRTY) {
+		val |= _PAGE_MODIFIED;
+		if (newprot_val & _PAGE_WRITE)
+			newprot_val |= _PAGE_DIRTY;
+	}
+
+	if (newprot_val & _PAGE_DIRTY) {
+		newprot_val |= _PAGE_MODIFIED;
+		if ((newprot_val & _PAGE_WRITE) == 0)
+			newprot_val &= ~_PAGE_DIRTY;
+	}
+
+	val &= _PAGE_CHG_MASK;
+	val |= newprot_val;
+
+	return __pte(val);
 }
 
 #define pgd_ERROR(e) \
@@ -443,14 +464,14 @@ static inline void ptep_set_wrprotect(struct mm_struct *mm,
 				      unsigned long address, pte_t *ptep)
 {
 	pte_t read_pte = READ_ONCE(*ptep);
-	/*
-	 * ptep_set_wrprotect can be called for shadow stack ranges too.
-	 * shadow stack memory is XWR = 010 and thus clearing _PAGE_WRITE will lead to
-	 * encoding 000b which is wrong encoding with V = 1. This should lead to page fault
-	 * but we dont want this wrong configuration to be set in page tables.
-	 */
-	atomic_long_set((atomic_long_t *)ptep,
-			((pte_val(read_pte) & ~(unsigned long)_PAGE_WRITE) | _PAGE_READ));
+	unsigned long val = pte_val(read_pte);
+
+	if (val & _PAGE_DIRTY)
+		val |= _PAGE_MODIFIED;
+
+	val &= ~(_PAGE_WRITE | _PAGE_DIRTY);
+
+	atomic_long_set((atomic_long_t *)ptep, val);
 }
 
 #define __HAVE_ARCH_PTEP_CLEAR_YOUNG_FLUSH
@@ -486,24 +507,24 @@ static inline pgprot_t pgprot_noncached(pgprot_t _prot)
 {
 	unsigned long prot = pgprot_val(_prot);
 
-	prot &= ~_PAGE_MTMASK;
 	prot |= _PAGE_IO;
 
 	return __pgprot(prot);
 }
 
-#define pgprot_writecombine pgprot_writecombine
-static inline pgprot_t pgprot_writecombine(pgprot_t _prot)
+#define pgprot_dmacoherent pgprot_noncached
+
+#define pgprot_writethrough pgprot_writethrough
+static inline pgprot_t pgprot_writethrough(pgprot_t _prot)
 {
 	unsigned long prot = pgprot_val(_prot);
 
-	prot &= ~_PAGE_MTMASK;
-	prot |= _PAGE_NOCACHE;
+	prot &= ~_PAGE_IO;
 
 	return __pgprot(prot);
 }
 
-#define pgprot_dmacoherent pgprot_writecombine
+#define pgprot_writecombine pgprot_writethrough
 
 #define __pmd_to_phys(pmd)  (__page_val_to_pfn(pmd_val(pmd)) << PAGE_SHIFT)
 
@@ -517,28 +538,28 @@ static inline unsigned long pmd_pfn(pmd_t pmd)
  * are !pte_none() && !pte_present().
  *
  * Format of swap PTE:
- *	bit            0:	_PAGE_PRESENT (zero)
- *	bit       1 to 2:	(zero)
- *	bit            3:	_PAGE_SWP_SOFT_DIRTY
- *	bit            4:	_PAGE_SWP_UFFD
- *	bit            5:	_PAGE_PROT_NONE (zero)
- *	bit            6:	exclusive marker
- *	bits      7 to 11:	swap type
- *	bits 12 to XLEN-1:	swap offset
+ *	bit            0:	_PAGE_ACCESSED (zero)
+ *	bit            1:	_PAGE_DIRTY (zero)
+ *      bit            2:	_PAGE_PROT_NONE (zero)
+ *      bit            3: 	exclusive marker
+ *      bit            4:	zero
+ *      bits     5 to 24:       swap offset
+ *      bit           25:	_PAGE_PRESENT (zero)
+ *      bits    26 to 31:       swap type
  */
-#define __SWP_TYPE_SHIFT	7
-#define __SWP_TYPE_BITS		5
+#define __SWP_TYPE_SHIFT	26
+#define __SWP_TYPE_BITS		6
 #define __SWP_TYPE_MASK		((1UL << __SWP_TYPE_BITS) - 1)
-#define __SWP_OFFSET_SHIFT	(__SWP_TYPE_BITS + __SWP_TYPE_SHIFT)
+#define __SWP_OFFSET_SHIFT	(_PAGE_PFN_SHIFT)
 
 #define MAX_SWAPFILES_CHECK()	\
 	BUILD_BUG_ON(MAX_SWAPFILES_SHIFT > __SWP_TYPE_BITS)
 
 #define __swp_type(x)	(((x).val >> __SWP_TYPE_SHIFT) & __SWP_TYPE_MASK)
-#define __swp_offset(x)	((x).val >> __SWP_OFFSET_SHIFT)
+#define __swp_offset(x)	(((x).val & _PAGE_PFN_MASK) >> __SWP_OFFSET_SHIFT)
 #define __swp_entry(type, offset) ((swp_entry_t) \
 	{ (((type) & __SWP_TYPE_MASK) << __SWP_TYPE_SHIFT) | \
-	  ((offset) << __SWP_OFFSET_SHIFT) })
+	  ((offset << __SWP_OFFSET_SHIFT) & _PAGE_PFN_MASK) })
 
 #define __pte_to_swp_entry(pte)	((swp_entry_t) { pte_val(pte) })
 #define __swp_entry_to_pte(x)	((pte_t) { (x).val })
