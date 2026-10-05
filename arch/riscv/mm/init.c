@@ -478,7 +478,7 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 		     != (__fix_to_virt(FIX_BTMAP_END) >> PMD_SHIFT));
 
 	pt_ops_set_fixmap();
-}\
+}
 
 static void __meminit create_linear_mapping_range(phys_addr_t start,
 						  phys_addr_t end)
