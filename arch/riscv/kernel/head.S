@@ -163,22 +163,38 @@ SYM_CODE_START(_start_kernel)
 	/* Load the global pointer */
 	load_global_pointer
 
+	la s1, hart_lottery
+
 	/* Verify that our hartid is valid (i.e. not equal to INVALID_HARTID) */
 	not t0, a0
-	beqz t0, .Lsecondary_park
+	bnez t0, .Lhartid_ok
+	/*
+	 * It's invalid, but we still have to increment hart_lottery, otherwise
+	 * the boot CPU will be forever waiting for the CPU to reach the kernel.
+	 * Take care not to be the first to increment it.
+	 */
+1:	lr.w t0, (s1)
+	beqz t0, 1b
+	addi t1, t0, 1
+	sc.w t1, t1, (s1)
+	bnez t1, 1b
+	j .Lsecondary_park
+.Lhartid_ok:
 
 	/* Pick one hart to run the main boot sequence */
-	la a3, hart_lottery
-1:	lr.w t0, (a3)
+1:	lr.w t0, (s1)
 	addi t1, t0, 1
-	sc.w t1, t1, (a3)
+	sc.w t1, t1, (s1)
 	bnez t1, 1b
 #ifdef CONFIG_SMP
-	bnez t1, .Lsecondary_start
+	bnez t0, .Lsecondary_start
 	fence rw, rw
 #else /* CONFIG_SMP */
-	bnez t1, .Lsecondary_park
+	bnez t0, .Lsecondary_park
 #endif /* CONFIG_SMP */
+
+	/* Save the total number of CPUs that the bootloader gave us */
+	mv s1, a2
 
 	/* Clear BSS for flat non-ELF images */
 	la a3, __bss_start
@@ -212,6 +228,18 @@ SYM_CODE_START(_start_kernel)
 	la tp, init_task
 	la sp, init_thread_union + THREAD_SIZE
 	addi sp, sp, -PT_SIZE_ON_STACK
+
+	/*
+	 * Up until now the only memory we've touched is our static image and
+	 * the FDT. Once start_kernel is called though, all bets are off, and
+	 * any memory in the system might get touched. That isn't safe until
+	 * all CPUs have entered the kernel and started spinwaiting: before
+	 * that point a CPU might still be in a bootloader or similar.
+	 */
+	la t0, hart_lottery
+1:	lw t1, (t0)
+	bne t1, s1, 1b
+	fence r, rw
 
 	/* Start the kernel */
 	tail start_kernel

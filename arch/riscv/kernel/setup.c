@@ -28,7 +28,6 @@
 #include <asm/setup.h>
 #include <asm/set_memory.h>
 #include <asm/sections.h>
-#include <asm/sbi.h>
 #include <asm/tlbflush.h>
 #include <asm/thread_info.h>
 
@@ -270,7 +269,6 @@ void __init setup_arch(char **cmdline_p)
 	*cmdline_p = boot_command_line;
 
 	early_ioremap_setup();
-	sbi_init();
 	jump_label_init();
 	parse_early_param();
 

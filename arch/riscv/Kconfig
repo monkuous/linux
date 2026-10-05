@@ -12,7 +12,6 @@ config RISCV
 	select ARCH_HAS_DEBUG_VIRTUAL
 	select ARCH_HAS_DEBUG_VM_PGTABLE
 	select ARCH_HAS_DEBUG_WX
-	select ARCH_HAS_DELAY_TIMER
 	select ARCH_HAS_ELF_CORE_EFLAGS if BINFMT_ELF && ELF_CORE
 	select ARCH_HAS_FAST_MULTIPLIER
 	select ARCH_HAS_FORTIFY_SOURCE
@@ -139,9 +138,6 @@ config RISCV
 	select OF_IRQ
 	select PCI_DOMAINS_GENERIC if PCI
 	select PCI_MSI if PCI
-	select RISCV_INTC
-	select RISCV_TIMER if RISCV_SBI
-	select SIFIVE_PLIC
 	select SPARSE_IRQ
 	select SYSCTL_EXCEPTION_TRACE
 	select THREAD_INFO_IN_TASK
@@ -157,6 +153,8 @@ config RISCV
 	select DMA_DIRECT_REMAP
 	select SYSCTL_ARCH_UNALIGN_ALLOW
 	select FUNCTION_ALIGNMENT_4B
+	select XRARCH_LSIC
+	select XRARCH_RTC
 
 # https://github.com/llvm/llvm-project/commit/bbc0f99f3bc96f1db16f649fc21dd18e5b0918f6
 config ARCH_HAS_BROKEN_DWARF5
@@ -173,10 +171,6 @@ config ARCH_MMAP_RND_BITS_MIN
 #  VA_BITS - PAGE_SHIFT - 3
 config ARCH_MMAP_RND_BITS_MAX
 	default 17
-
-# set if we are running in S-mode and can use SBI calls
-config RISCV_SBI
-	def_bool y
 
 config MMU
 	def_bool y

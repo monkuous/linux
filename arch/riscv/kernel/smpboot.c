@@ -172,6 +172,7 @@ asmlinkage __visible void smp_callin(void)
 	store_cpu_topology(curr_cpuid);
 	notify_cpu_starting(curr_cpuid);
 
+	csr_set(CSR_IE, IE_EIE);
 	riscv_ipi_enable();
 
 	numa_add_cpu(curr_cpuid);

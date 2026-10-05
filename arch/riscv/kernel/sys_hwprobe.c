@@ -39,10 +39,6 @@ static void hwprobe_one_pair(struct riscv_hwprobe *pair,
 		pair->value = user_max_virt_addr();
 		break;
 
-	case RISCV_HWPROBE_KEY_TIME_CSR_FREQ:
-		pair->value = riscv_timebase;
-		break;
-
 	/*
 	 * For forward compatibility, unknown keys don't fail the whole
 	 * call, but get their element key set to -1 and value set to 0

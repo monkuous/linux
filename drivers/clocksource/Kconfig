@@ -824,4 +824,12 @@ choice
 
 endchoice
 
+config XRARCH_RTC
+	bool "XR/arch RTC driver"
+	depends on OF
+	select TIMER_PROBE
+	select TIMER_OF
+	help
+	  Enables support for the RTC device found in XR/computer systems.
+
 endmenu

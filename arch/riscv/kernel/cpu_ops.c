@@ -10,7 +10,6 @@
 #include <linux/sched.h>
 #include <asm/cpu_ops.h>
 #include <asm/cpu_ops_sbi.h>
-#include <asm/sbi.h>
 #include <asm/smp.h>
 
 const struct cpu_operations *cpu_ops __ro_after_init = &cpu_ops_spinwait;
@@ -19,10 +18,4 @@ extern const struct cpu_operations cpu_ops_sbi;
 
 void __init cpu_set_ops(void)
 {
-#if IS_ENABLED(CONFIG_RISCV_SBI)
-	if (sbi_probe_extension(SBI_EXT_HSM)) {
-		pr_info("SBI HSM extension detected\n");
-		cpu_ops = &cpu_ops_sbi;
-	}
-#endif
 }

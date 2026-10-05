@@ -42,10 +42,5 @@ obj-$(CONFIG_MODULE_SECTIONS)	+= module-sections.o
 
 obj-$(CONFIG_PERF_EVENTS)	+= perf_callchain.o
 obj-$(CONFIG_HAVE_PERF_REGS)	+= perf_regs.o
-obj-$(CONFIG_RISCV_SBI)		+= sbi.o sbi_ecall.o
-ifeq ($(CONFIG_RISCV_SBI), y)
-obj-$(CONFIG_SMP)		+= sbi-ipi.o
-obj-$(CONFIG_SMP) += cpu_ops_sbi.o
-endif
 
 obj-$(CONFIG_JUMP_LABEL)	+= jump_label.o
