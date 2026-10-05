@@ -478,18 +478,43 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 		     != (__fix_to_virt(FIX_BTMAP_END) >> PMD_SHIFT));
 
 	pt_ops_set_fixmap();
-}
+}\
 
 static void __meminit create_linear_mapping_range(phys_addr_t start,
 						  phys_addr_t end)
 {
-	phys_addr_t pa;
-	uintptr_t va;
+	phys_addr_t pa = start;
+	uintptr_t va = (uintptr_t)__va(pa);
+	unsigned long pgd_idx = pgd_index(va);
+	unsigned long pte_idx = pte_index(va);
 
-	for (pa = start; pa < end; pa += PAGE_SIZE) {
-		va = (uintptr_t)__va(pa);
+	while (pgd_idx < PTRS_PER_PGD && pa < end) {
+		pte_t *ptep;
+		phys_addr_t next_phys;
 
-		create_pgd_mapping(swapper_pg_dir, va, pa, pgprot_from_va(va));
+		if (pgd_val(swapper_pg_dir[pgd_idx]) == 0) {
+			next_phys = alloc_pgd_next(va);
+			swapper_pg_dir[pgd_idx] = pfn_pgd(PFN_DOWN(next_phys),
+							  PAGE_TABLE);
+			ptep = get_pgd_next_virt(next_phys);
+			memset(ptep, 0, PAGE_SIZE);
+		} else {
+			next_phys = PFN_PHYS(_pgd_pfn(swapper_pg_dir[pgd_idx]));
+			ptep = get_pgd_next_virt(next_phys);
+		}
+
+		while (pte_idx < PTRS_PER_PTE && pa < end) {
+			if (pte_none(ptep[pte_idx]))
+				ptep[pte_idx] = pfn_pte(PFN_DOWN(pa),
+							pgprot_from_va(va));
+
+			va += PAGE_SIZE;
+			pa += PAGE_SIZE;
+			pte_idx += 1;
+		}
+
+		pte_idx = 0;
+		pgd_idx += 1;
 	}
 }
 
