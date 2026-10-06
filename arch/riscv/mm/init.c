@@ -456,7 +456,9 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	idx = pgd_index(FIXADDR_START);
 	early_pg_dir[idx] = pfn_pgd(PFN_DOWN(fixmap_pgd_next), PAGE_TABLE);
 
-	/* Setup trampoline PTE */
+	/* Setup trampoline PTEs */
+	create_pgd_mapping(trampoline_pg_dir, kernel_map.phys_addr,
+			   kernel_map.phys_addr, PAGE_KERNEL_EXEC);
 	create_pgd_mapping(trampoline_pg_dir, KERNEL_LINK_ADDR,
 			   kernel_map.phys_addr, PAGE_KERNEL_EXEC);
 

@@ -48,35 +48,29 @@ relocate_enable_mmu:
 	sub a1, a1, a2
 	add ra, ra, a1
 
-	/* Point stvec to virtual address of instruction after satp write */
-	la a2, 1f
-	add a2, a2, a1
-	csrw CSR_TVEC, a2
-
 	/* Compute satp for kernel page tables, but don't load it yet */
 	srl a2, a0, PAGE_SHIFT
-	li a1, SATP_MODE_32
-	or a2, a2, a1
+	li t0, SATP_MODE_32
+	or a2, a2, t0
 
-	/*
-	 * Load trampoline page directory, which will cause us to trap to
-	 * stvec if VA != PA, or simply fall through if VA == PA.  We need a
-	 * full fence here because setup_vm() just wrote these PTEs and we need
-	 * to ensure the new translations are in use.
-	 */
+	/* Load trampoline page directory */
 	la a0, trampoline_pg_dir
 	srl a0, a0, PAGE_SHIFT
-	or a0, a0, a1
+	or a0, a0, t0
 	sfence.vma
 	csrw CSR_SATP, a0
-.align 2
-1:
-	/* Set trap vector to spin forever to help debug */
-	la a0, .Lsecondary_park
-	csrw CSR_TVEC, a0
 
+	/* Start using proper virtual addresses for pc */
+	la t0, 1f
+	add t0, t0, a1
+	jr t0
+1:
 	/* Reload the global pointer */
 	load_global_pointer
+
+	/* Set trap vector */
+	la t0, exception_block
+	csrw CSR_TVEC, t0
 
 	/*
 	 * Switch to kernel page tables.  A full fence is necessary in order to
@@ -88,59 +82,6 @@ relocate_enable_mmu:
 	sfence.vma
 
 	ret
-#ifdef CONFIG_SMP
-	.global secondary_start_sbi
-secondary_start_sbi:
-	/* Load the global pointer */
-	load_global_pointer
-
-	/* Set trap vector to spin forever to help debug */
-	la a3, .Lsecondary_park
-	csrw CSR_TVEC, a3
-
-	/* a0 contains the hartid & a1 contains boot data */
-	li a2, SBI_HART_BOOT_TASK_PTR_OFFSET
-	add a2, a2, a1
-	REG_L tp, (a2)
-	li a3, SBI_HART_BOOT_STACK_PTR_OFFSET
-	add a3, a3, a1
-	REG_L sp, (a3)
-
-.Lsecondary_start_common:
-
-	/* Enable virtual memory and relocate to virtual address */
-	la a0, swapper_pg_dir
-	call relocate_enable_mmu
-
-	call .Lsetup_trap_vector
-
-	call smp_callin
-#endif /* CONFIG_SMP */
-
-.align 2
-.Lsecondary_park:
-	/*
-	 * Park this hart if we:
-	 *  - have too many harts on CONFIG_RISCV_BOOT_SPINWAIT
-	 *  - receive an early trap, before setup_trap_vector finished
-	 *  - fail in smp_callin(), as a successful one wouldn't return
-	 */
-	wfi
-	j .Lsecondary_park
-
-.align 2
-.Lsetup_trap_vector:
-	/* Set trap vector to exception handler */
-	la a0, handle_exception
-	csrw CSR_TVEC, a0
-
-	/*
-	 * Set sup0 scratch register to 0, indicating to exception vector that
-	 * we are presently executing in kernel.
-	 */
-	csrw CSR_SCRATCH, zero
-	ret
-
 SYM_CODE_END(_start)
 
 SYM_CODE_START(_start_kernel)
@@ -198,16 +139,11 @@ SYM_CODE_START(_start_kernel)
 	la sp, init_thread_union + THREAD_SIZE
 	addi sp, sp, -PT_SIZE_ON_STACK
 	mv a0, a1
-
-	/* Set trap vector to spin forever to help debug */
-	la a3, .Lsecondary_park
-	csrw CSR_TVEC, a3
 	call setup_vm
 
 	la a0, early_pg_dir
 	call relocate_enable_mmu
 
-	call .Lsetup_trap_vector
 	/* Restore C environment */
 	la tp, init_task
 	la sp, init_thread_union + THREAD_SIZE
@@ -228,11 +164,8 @@ SYM_CODE_START(_start_kernel)
 	/* Start the kernel */
 	tail start_kernel
 
+#ifdef CONFIG_SMP
 .Lsecondary_start:
-	/* Set trap vector to spin forever to help debug */
-	la a3, .Lsecondary_park
-	csrw CSR_TVEC, a3
-
 	la a1, __cpu_spinwait_stack_pointer
 	la a2, __cpu_spinwait_task_pointer
 	la a3, __cpu_spinwait_current_hart
@@ -273,6 +206,19 @@ SYM_CODE_START(_start_kernel)
 	bnez t1, 1b
 	fence rw, rw
 
-	tail .Lsecondary_start_common
+	/* Enable virtual memory and relocate to virtual address */
+	la a0, swapper_pg_dir
+	call relocate_enable_mmu
 
+	call smp_callin
+#endif /* CONFIG_SMP */
+
+.align 2
+.Lsecondary_park:
+	/*
+	 * Park this hart if we fail in smp_callin(),
+	 * as a successful one wouldn't return.
+	 */
+	wfi
+	j .Lsecondary_park
 SYM_CODE_END(_start_kernel)

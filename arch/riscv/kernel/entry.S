@@ -16,22 +16,32 @@
 #include <linux/sizes.h>
 
 	.section .irqentry.text, "ax"
+	.balign 4096
 
-SYM_CODE_START(handle_exception)
+SYM_CODE_START_NOALIGN(exception_block)
+
+.macro trap_handler_start name
+.balign 256
+SYM_CODE_START_NOALIGN(entry_\name)
+.endm
+
+.macro trap_handler_end name
+SYM_CODE_END(entry_\name)
+ASM_NOKPROBE(entry_\name)
+.endm
+
+.macro trap_handler name func
+trap_handler_start \name
 	/*
 	 * If coming from userspace, preserve the user thread pointer and load
 	 * the kernel thread pointer.  If we came from the kernel, the scratch
 	 * register will contain 0, and we should continue on the current TP.
 	 */
 	csrrw tp, CSR_SCRATCH, tp
-	bnez tp, .Lsave_context
-
-.Lrestore_kernel_tpsp:
+	bnez tp, 1f
 	csrr tp, CSR_SCRATCH
-
 	REG_S sp, TASK_TI_KERNEL_SP(tp)
-
-.Lsave_context:
+1:
 	REG_S sp, TASK_TI_USER_SP(tp)
 	REG_L sp, TASK_TI_KERNEL_SP(tp)
 	addi sp, sp, -(PT_SIZE_ON_STACK)
@@ -70,27 +80,36 @@ SYM_CODE_START(handle_exception)
 
 	move a0, sp /* pt_regs */
 
-	/* Handle exception */
-	slli t0, s4, RISCV_LGPTR
-	la t1, excp_vect_table
-	la t2, excp_vect_table_end
-	add t0, t1, t0
-	/* Check if exception code lies within bounds */
-	bgeu t0, t2, 3f
-	REG_L t1, 0(t0)
-2:	jalr t1
+	/* Handle trap */
+	call \func
 	j ret_from_exception
-3:
+trap_handler_end \name
+.endm
 
-	la t1, do_trap_unknown
-	j 2b
-SYM_CODE_END(handle_exception)
-ASM_NOKPROBE(handle_exception)
+trap_handler trap0 do_trap_unknown
+trap_handler irq do_irq
+trap_handler syscall do_trap_syscall
+trap_handler trap3 do_trap_unknown
+trap_handler bus_error do_trap_bus_error
+trap_handler nmi do_trap_unknown
+trap_handler breakpoint do_trap_break
+trap_handler invalid_insn do_trap_insn_illegal
+trap_handler privileged_insn do_trap_insn_illegal
+trap_handler unaligned do_trap_unaligned
+trap_handler trap10 do_trap_unknown
+trap_handler trap11 do_trap_unknown
+trap_handler load_page_fault do_page_fault
+trap_handler store_page_fault do_page_fault
+trap_handler itb_miss do_trap_unknown
+trap_handler dtb_miss do_trap_unknown
+
+SYM_CODE_END(exception_block)
+ASM_NOKPROBE(exception_block)
 
 /*
  * The ret_from_exception must be called with interrupt disabled. Here is the
  * caller list:
- *  - handle_exception
+ *  - exception_block
  *  - ret_from_fork
  */
 SYM_CODE_START_NOALIGN(ret_from_exception)
@@ -252,23 +271,3 @@ SYM_FUNC_START(__switch_to)
 	move tp, a1
 	ret
 SYM_FUNC_END(__switch_to)
-
-	.section ".rodata"
-	.align LGREG
-	/* Exception vector table */
-SYM_DATA_START_LOCAL(excp_vect_table)
-	RISCV_PTR do_trap_unknown
-	RISCV_PTR do_irq
-	RISCV_PTR do_trap_syscall
-	RISCV_PTR do_trap_unknown
-	RISCV_PTR do_trap_bus_error
-	RISCV_PTR do_trap_unknown
-	RISCV_PTR do_trap_break
-	RISCV_PTR do_trap_insn_illegal
-	RISCV_PTR do_trap_insn_illegal
-	RISCV_PTR do_trap_unaligned
-	RISCV_PTR do_trap_unknown
-	RISCV_PTR do_trap_unknown
-	RISCV_PTR do_page_fault /* load page fault */
-	RISCV_PTR do_page_fault /* store page fault */
-SYM_DATA_END_LABEL(excp_vect_table, SYM_L_LOCAL, excp_vect_table_end)
