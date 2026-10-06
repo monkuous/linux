@@ -178,15 +178,15 @@ static const struct irq_domain_ops lsic_domain_ops = {
 
 static int lsic_parse_target(struct device_node *device, u32 idx, int *cpu)
 {
-	unsigned long cpu_hwid;
+	u64 cpu_hwid;
 	struct of_phandle_args cpu_data;
 	int error = of_parse_phandle_with_args(device, "xrarch,targets", NULL,
 					       idx, &cpu_data);
 	if (error)
 		return error;
 
-	error = riscv_of_parent_hartid(cpu_data.np, &cpu_hwid);
-	if (error < 0) {
+	cpu_hwid = of_get_cpu_hwid(cpu_data.np, 0);
+	if (cpu_hwid == ~0ULL) {
 		pr_warn("unable to find cpu hwid for %pOF\n", cpu_data.np);
 		return error;
 	}

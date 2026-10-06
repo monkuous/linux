@@ -49,7 +49,6 @@ struct thread_struct {
 	unsigned long sp;	/* Kernel mode stack */
 	unsigned long s[12];	/* s[0]: frame pointer */
 	unsigned long bad_cause;
-	unsigned long envcfg;
 	unsigned long sum;
 	unsigned long align_ctl;
 #ifdef CONFIG_SMP

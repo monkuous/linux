@@ -8,17 +8,11 @@
 #define DECLARE_DO_ERROR_INFO(name)	asmlinkage void name(struct pt_regs *regs)
 
 DECLARE_DO_ERROR_INFO(do_trap_unknown);
-DECLARE_DO_ERROR_INFO(do_trap_insn_misaligned);
-DECLARE_DO_ERROR_INFO(do_trap_insn_fault);
-DECLARE_DO_ERROR_INFO(do_trap_insn_illegal);
-DECLARE_DO_ERROR_INFO(do_trap_load_fault);
-DECLARE_DO_ERROR_INFO(do_trap_load_misaligned);
-DECLARE_DO_ERROR_INFO(do_trap_store_misaligned);
-DECLARE_DO_ERROR_INFO(do_trap_store_fault);
-DECLARE_DO_ERROR_INFO(do_trap_ecall_u);
-DECLARE_DO_ERROR_INFO(do_trap_ecall_s);
-DECLARE_DO_ERROR_INFO(do_trap_ecall_m);
+DECLARE_DO_ERROR_INFO(do_trap_syscall);
+DECLARE_DO_ERROR_INFO(do_trap_bus_error);
 DECLARE_DO_ERROR_INFO(do_trap_break);
+DECLARE_DO_ERROR_INFO(do_trap_insn_illegal);
+DECLARE_DO_ERROR_INFO(do_trap_unaligned);
 
 asmlinkage void ret_from_fork_kernel(void *fn_arg, int (*fn)(void *), struct pt_regs *regs);
 asmlinkage void ret_from_fork_user(struct pt_regs *regs);

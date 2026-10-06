@@ -70,17 +70,7 @@ SYM_CODE_START(handle_exception)
 
 	move a0, sp /* pt_regs */
 
-	/*
-	 * MSB of cause differentiates between
-	 * interrupts and exceptions
-	 */
-	bge s4, zero, 1f
-
-	/* Handle interrupts */
-	call do_irq
-	j ret_from_exception
-1:
-	/* Handle other exceptions */
+	/* Handle exception */
 	slli t0, s4, RISCV_LGPTR
 	la t1, excp_vect_table
 	la t2, excp_vect_table_end
@@ -267,21 +257,18 @@ SYM_FUNC_END(__switch_to)
 	.align LGREG
 	/* Exception vector table */
 SYM_DATA_START_LOCAL(excp_vect_table)
-	RISCV_PTR do_trap_insn_misaligned
-	RISCV_PTR do_trap_insn_fault
-	RISCV_PTR do_trap_insn_illegal
+	RISCV_PTR do_trap_unknown
+	RISCV_PTR do_irq
+	RISCV_PTR do_trap_syscall
+	RISCV_PTR do_trap_unknown
+	RISCV_PTR do_trap_bus_error
+	RISCV_PTR do_trap_unknown
 	RISCV_PTR do_trap_break
-	RISCV_PTR do_trap_load_misaligned
-	RISCV_PTR do_trap_load_fault
-	RISCV_PTR do_trap_store_misaligned
-	RISCV_PTR do_trap_store_fault
-	RISCV_PTR do_trap_ecall_u /* system call */
-	RISCV_PTR do_trap_ecall_s
+	RISCV_PTR do_trap_insn_illegal
+	RISCV_PTR do_trap_insn_illegal
+	RISCV_PTR do_trap_unaligned
 	RISCV_PTR do_trap_unknown
-	RISCV_PTR do_trap_ecall_m
-	/* instruction page fault */
-	RISCV_PTR do_page_fault
-	RISCV_PTR do_page_fault   /* load page fault */
 	RISCV_PTR do_trap_unknown
-	RISCV_PTR do_page_fault   /* store page fault */
+	RISCV_PTR do_page_fault /* load page fault */
+	RISCV_PTR do_page_fault /* store page fault */
 SYM_DATA_END_LABEL(excp_vect_table, SYM_L_LOCAL, excp_vect_table_end)

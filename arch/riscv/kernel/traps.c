@@ -158,10 +158,8 @@ asmlinkage __visible __trap_section void name(struct pt_regs *regs)		\
 
 DO_ERROR_INFO(do_trap_unknown,
 	SIGILL, ILL_ILLTRP, "unknown exception");
-DO_ERROR_INFO(do_trap_insn_misaligned,
-	SIGBUS, BUS_ADRALN, "instruction address misaligned");
-DO_ERROR_INFO(do_trap_insn_fault,
-	SIGSEGV, SEGV_ACCERR, "instruction access fault");
+DO_ERROR_INFO(do_trap_bus_error,
+	SIGSEGV, SEGV_ACCERR, "bus error");
 
 asmlinkage __visible __trap_section void do_trap_insn_illegal(struct pt_regs *regs)
 {
@@ -184,28 +182,7 @@ asmlinkage __visible __trap_section void do_trap_insn_illegal(struct pt_regs *re
 	}
 }
 
-DO_ERROR_INFO(do_trap_load_fault,
-	SIGSEGV, SEGV_ACCERR, "load access fault");
-
-enum misaligned_access_type {
-	MISALIGNED_STORE,
-	MISALIGNED_LOAD,
-};
-static const struct {
-	const char *type_str;
-	int (*handler)(struct pt_regs *regs);
-} misaligned_handler[] = {
-	[MISALIGNED_STORE] = {
-		.type_str = "Oops - store (or AMO) address misaligned",
-		.handler = handle_misaligned_store,
-	},
-	[MISALIGNED_LOAD] = {
-		.type_str = "Oops - load address misaligned",
-		.handler = handle_misaligned_load,
-	},
-};
-
-static void do_trap_misaligned(struct pt_regs *regs, enum misaligned_access_type type)
+void do_trap_unaligned(struct pt_regs *regs)
 {
 	irqentry_state_t state;
 
@@ -216,9 +193,9 @@ static void do_trap_misaligned(struct pt_regs *regs, enum misaligned_access_type
 		state = irqentry_nmi_enter(regs);
 	}
 
-	if (misaligned_handler[type].handler(regs))
+	if (handle_unaligned(regs))
 		do_trap_error(regs, SIGBUS, BUS_ADRALN, regs->epc,
-			      misaligned_handler[type].type_str);
+			      "Oops - unaligned access");
 
 	if (user_mode(regs)) {
 		local_irq_disable();
@@ -227,23 +204,6 @@ static void do_trap_misaligned(struct pt_regs *regs, enum misaligned_access_type
 		irqentry_nmi_exit(regs, state);
 	}
 }
-
-asmlinkage __visible __trap_section void do_trap_load_misaligned(struct pt_regs *regs)
-{
-	do_trap_misaligned(regs, MISALIGNED_LOAD);
-}
-
-asmlinkage __visible __trap_section void do_trap_store_misaligned(struct pt_regs *regs)
-{
-	do_trap_misaligned(regs, MISALIGNED_STORE);
-}
-
-DO_ERROR_INFO(do_trap_store_fault,
-	SIGSEGV, SEGV_ACCERR, "store (or AMO) access fault");
-DO_ERROR_INFO(do_trap_ecall_s,
-	SIGILL, ILL_ILLTRP, "environment call from S-mode");
-DO_ERROR_INFO(do_trap_ecall_m,
-	SIGILL, ILL_ILLTRP, "environment call from M-mode");
 
 static bool probe_single_step_handler(struct pt_regs *regs)
 {
@@ -305,7 +265,7 @@ asmlinkage __visible __trap_section void do_trap_break(struct pt_regs *regs)
 }
 
 asmlinkage __visible __trap_section  __no_stack_protector
-void do_trap_ecall_u(struct pt_regs *regs)
+void do_trap_syscall(struct pt_regs *regs)
 {
 	if (user_mode(regs)) {
 		long syscall = regs->a7;
@@ -325,7 +285,7 @@ void do_trap_ecall_u(struct pt_regs *regs)
 		irqentry_state_t state = irqentry_nmi_enter(regs);
 
 		do_trap_error(regs, SIGILL, ILL_ILLTRP, regs->epc,
-			"Oops - environment call from U-mode");
+			"Oops - syscall");
 
 		irqentry_nmi_exit(regs, state);
 	}

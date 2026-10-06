@@ -23,67 +23,40 @@
 #define SATP_ASID_SHIFT	22
 #define SATP_ASID_MASK	_AC(0x1FF, UL)
 
-/* Exception cause high bit - is an interrupt if set */
-#define CAUSE_IRQ_FLAG		(_AC(1, UL) << 31)
-
 /* Interrupt causes (minus the high bit) */
-#define IRQ_S_SOFT		1
-#define IRQ_S_TIMER		5
 #define IRQ_S_EXT		9
-#define IRQ_LOCAL_MAX		(IRQ_S_EXT + 1)
-#define IRQ_LOCAL_MASK		GENMASK((IRQ_LOCAL_MAX - 1), 0)
 
 /* Exception causes */
-#define EXC_INST_MISALIGNED	0
-#define EXC_INST_ACCESS		1
-#define EXC_INST_ILLEGAL	2
-#define EXC_BREAKPOINT		3
-#define EXC_LOAD_MISALIGNED	4
-#define EXC_LOAD_ACCESS		5
-#define EXC_STORE_MISALIGNED	6
-#define EXC_STORE_ACCESS	7
-#define EXC_SYSCALL		8
-#define EXC_HYPERVISOR_SYSCALL	9
-#define EXC_INST_PAGE_FAULT	12
-#define EXC_LOAD_PAGE_FAULT	13
-#define EXC_STORE_PAGE_FAULT	15
+#define EXC_INT			1
+#define EXC_SYS			2
+#define EXC_BUS			4
+#define EXC_NMI			5
+#define EXC_BRK			6
+#define EXC_INV			7
+#define EXC_PRV			8
+#define EXC_UNA			9
+#define EXC_PGF			12
+#define EXC_PFW			13
 
 /* symbolic CSR names: */
-#define CSR_TIME		0xc01
-#define CSR_TIMEH		0xc81
-
 #define CSR_SSTATUS		0x100
-#define CSR_SIE			0x104
 #define CSR_STVEC		0x105
-#define CSR_SCOUNTEREN		0x106
 #define CSR_SSCRATCH		0x140
 #define CSR_SEPC		0x141
 #define CSR_SCAUSE		0x142
 #define CSR_STVAL		0x143
-#define CSR_SIP			0x144
 #define CSR_SATP		0x180
 
 #define CSR_STATUS	CSR_SSTATUS
-#define CSR_IE		CSR_SIE
 #define CSR_TVEC	CSR_STVEC
 #define CSR_SCRATCH	CSR_SSCRATCH
 #define CSR_EPC		CSR_SEPC
 #define CSR_CAUSE	CSR_SCAUSE
 #define CSR_TVAL	CSR_STVAL
-#define CSR_IP		CSR_SIP
 
 #define SR_IE		SR_SIE
 #define SR_PIE		SR_SPIE
 #define SR_PP		SR_SPP
-
-#define RV_IRQ_SOFT	IRQ_S_SOFT
-#define RV_IRQ_TIMER	IRQ_S_TIMER
-#define RV_IRQ_EXT	IRQ_S_EXT
-
-/* IE/IP (Supervisor/Machine Interrupt Enable/Pending) flags */
-#define IE_SIE		(_AC(0x1, UL) << RV_IRQ_SOFT)
-#define IE_TIE		(_AC(0x1, UL) << RV_IRQ_TIMER)
-#define IE_EIE		(_AC(0x1, UL) << RV_IRQ_EXT)
 
 #ifndef __ASSEMBLER__
 

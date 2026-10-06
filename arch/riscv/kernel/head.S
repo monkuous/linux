@@ -91,14 +91,6 @@ relocate_enable_mmu:
 #ifdef CONFIG_SMP
 	.global secondary_start_sbi
 secondary_start_sbi:
-	/* Mask all interrupts */
-	csrw CSR_IE, zero
-	csrw CSR_IP, zero
-
-	/* Enable time CSR */
-	li t0, 0x2
-	csrw CSR_SCOUNTEREN, t0
-
 	/* Load the global pointer */
 	load_global_pointer
 
@@ -152,14 +144,6 @@ secondary_start_sbi:
 SYM_CODE_END(_start)
 
 SYM_CODE_START(_start_kernel)
-	/* Mask all interrupts */
-	csrw CSR_IE, zero
-	csrw CSR_IP, zero
-
-	/* Enable time CSR */
-	li t0, 0x2
-	csrw CSR_SCOUNTEREN, t0
-
 	/* Load the global pointer */
 	load_global_pointer
 

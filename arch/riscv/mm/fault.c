@@ -23,8 +23,6 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/exceptions.h>
 
-#include "../kernel/head.h"
-
 static void show_pte(unsigned long addr)
 {
 	pgd_t *pgdp, pgd;
@@ -84,7 +82,7 @@ static inline void no_context(struct pt_regs *regs, unsigned long addr)
 	if (addr < PAGE_SIZE)
 		msg = "NULL pointer dereference";
 	else {
-		if (kfence_handle_page_fault(addr, regs->cause == EXC_STORE_PAGE_FAULT, regs))
+		if (kfence_handle_page_fault(addr, regs->cause == EXC_PFW, regs))
 			return;
 
 		msg = "paging request";
@@ -228,18 +226,13 @@ flush_tlb:
 static inline bool access_error(unsigned long cause, struct vm_area_struct *vma)
 {
 	switch (cause) {
-	case EXC_INST_PAGE_FAULT:
-		if (!(vma->vm_flags & VM_EXEC)) {
+	case EXC_PGF:
+		/* Write and exec imply read */
+		if (!(vma->vm_flags & (VM_READ | VM_WRITE | VM_EXEC))) {
 			return true;
 		}
 		break;
-	case EXC_LOAD_PAGE_FAULT:
-		/* Write implies read */
-		if (!(vma->vm_flags & (VM_READ | VM_WRITE))) {
-			return true;
-		}
-		break;
-	case EXC_STORE_PAGE_FAULT:
+	case EXC_PFW:
 		if (!(vma->vm_flags & VM_WRITE)) {
 			return true;
 		}
@@ -318,10 +311,8 @@ void handle_page_fault(struct pt_regs *regs)
 
 	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, addr);
 
-	if (cause == EXC_STORE_PAGE_FAULT)
+	if (cause == EXC_PFW)
 		flags |= FAULT_FLAG_WRITE;
-	else if (cause == EXC_INST_PAGE_FAULT)
-		flags |= FAULT_FLAG_INSTRUCTION;
 	if (!(flags & FAULT_FLAG_USER))
 		goto lock_mmap;
 

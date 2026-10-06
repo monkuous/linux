@@ -246,7 +246,7 @@ void arch_do_signal_or_restart(struct pt_regs *regs)
 	unsigned long continue_addr = 0, restart_addr = 0;
 	int retval = 0;
 	struct ksignal ksig;
-	bool syscall = (regs->cause == EXC_SYSCALL);
+	bool syscall = (regs->cause == EXC_SYS);
 
 	/* If we were from a system call, check for system call restarting */
 	if (syscall) {
