@@ -15,14 +15,14 @@
 #include <asm/fence.h>
 
 /* These barriers need to enforce ordering on both devices or memory. */
-#define __mb()		RISCV_FENCE(iorw, iorw)
-#define __rmb()		RISCV_FENCE(ir, ir)
-#define __wmb()		RISCV_FENCE(ow, ow)
+#define __mb()		({ asm volatile("fence iorw, iorw" ::: "memory"); })
+#define __rmb()		({ asm volatile("fence ir, ir" ::: "memory"); })
+#define __wmb()		({ asm volatile("fence ow, ow" ::: "memory"); })
 
 /* These barriers do not need to enforce ordering on devices, just memory. */
-#define __smp_mb()	RISCV_FENCE(rw, rw)
-#define __smp_rmb()	RISCV_FENCE(r, r)
-#define __smp_wmb()	RISCV_FENCE(w, w)
+#define __smp_mb()	({ asm volatile("fence rw, rw" ::: "memory"); })
+#define __smp_rmb()	({ asm volatile("fence r, r" ::: "memory"); })
+#define __smp_wmb()	({ asm volatile("fence w, w" ::: "memory"); })
 
 /*
  * This is a very specific barrier: it's currently only used in two places in
@@ -49,12 +49,12 @@
  * instances the scheduler pairs this with an mb(), so nothing is necessary on
  * the new hart.
  */
-#define smp_mb__after_spinlock()	RISCV_FENCE(iorw, iorw)
+#define smp_mb__after_spinlock()	__mb()
 
 #define __smp_store_release(p, v)					\
 do {									\
 	compiletime_assert_atomic_type(*p);				\
-	RISCV_FENCE(rw, w);						\
+	asm volatile("fence rw, w" ::: "memory");			\
 	WRITE_ONCE(*p, v);						\
 } while (0)
 
@@ -62,7 +62,7 @@ do {									\
 ({									\
 	typeof(*p) ___p1 = READ_ONCE(*p);				\
 	compiletime_assert_atomic_type(*p);				\
-	RISCV_FENCE(r, rw);						\
+	asm volatile("fence r, rw" ::: "memory");			\
 	___p1;								\
 })
 

@@ -31,7 +31,7 @@ void flush_icache_all(void)
 	 * S-IMSIC, so the fence ensures previous data writes "happen before"
 	 * the MMIO.
 	 */
-	RISCV_FENCE(w, o);
+	asm volatile("fence w, o" ::: "memory");
 
 	on_each_cpu(ipi_remote_fence_i, NULL, 1);
 }

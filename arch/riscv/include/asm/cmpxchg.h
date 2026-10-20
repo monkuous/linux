@@ -11,8 +11,7 @@
 #include <asm/fence.h>
 #include <asm/processor.h>
 
-#define __arch_xchg_masked(sc_sfx, swap_sfx, prepend, sc_append,	\
-			   swap_append, r, p, n)			\
+#define __arch_xchg_masked(prepend, append, r, p, n)			\
 ({									\
 	u32 *__ptr32b = (u32 *)((ulong)(p) & ~0x3);			\
 	ulong __s = ((ulong)(p) & (0x4 - sizeof(*p))) * BITS_PER_BYTE;	\
@@ -27,9 +26,9 @@
 	       "0:	lr.w %0, %2\n"					\
 	       "	and  %1, %0, %z4\n"				\
 	       "	or   %1, %1, %z3\n"				\
-	       "	sc.w" sc_sfx " %1, %1, %2\n"			\
+	       "	sc.w %1, %1, %2\n"				\
 	       "	bnez %1, 0b\n"					\
-	       sc_append						\
+	       append							\
 	       : "=&r" (__retx), "=&r" (__rc), "+A" (*(__ptr32b))	\
 	       : "rJ" (__newx), "rJ" (~__mask), "rJ" (__ptr32b)		\
 	       : "memory");						\
@@ -37,19 +36,22 @@
 	r = (__typeof__(*(p)))((__retx & __mask) >> __s);		\
 })
 
-#define __arch_xchg(sfx, prepend, append, r, p, n)			\
+#define __arch_xchg(prepend, append, r, p, n)				\
 ({									\
+	ulong __rc;							\
+									\
 	__asm__ __volatile__ (						\
 		prepend							\
-		"	amoswap" sfx " %0, %2, %1\n"			\
+		"0:	lr.w %0, %2\n"					\
+		"	sc.w %1, %3, %2\n"				\
+		"	bnez %1, 0b\n"					\
 		append							\
-		: "=r" (r), "+A" (*(p))					\
+		: "=&r" (r), "=&r" (__rc), "+A" (*(p))			\
 		: "r" (n)						\
 		: "memory");						\
 })
 
-#define _arch_xchg(ptr, new, sc_sfx, swap_sfx, prepend,			\
-		   sc_append, swap_append)				\
+#define _arch_xchg(ptr, new, prepend, append)				\
 ({									\
 	__typeof__(ptr) __ptr = (ptr);					\
 	__typeof__(*(__ptr)) __new = (new);				\
@@ -57,22 +59,12 @@
 									\
 	switch (sizeof(*__ptr)) {					\
 	case 1:								\
-		__arch_xchg_masked(sc_sfx, ".b" swap_sfx,		\
-				   prepend, sc_append, swap_append,	\
-				   __ret, __ptr, __new);		\
-		break;							\
 	case 2:								\
-		__arch_xchg_masked(sc_sfx, ".h" swap_sfx,		\
-				   prepend, sc_append, swap_append,	\
-				   __ret, __ptr, __new);		\
+		__arch_xchg_masked(prepend, append, __ret, __ptr,	\
+				   __new);				\
 		break;							\
 	case 4:								\
-		__arch_xchg(".w" swap_sfx, prepend, swap_append,	\
-			      __ret, __ptr, __new);			\
-		break;							\
-	case 8:								\
-		__arch_xchg(".d" swap_sfx, prepend, swap_append,	\
-			      __ret, __ptr, __new);			\
+		__arch_xchg(prepend, append, __ret, __ptr, __new);	\
 		break;							\
 	default:							\
 		BUILD_BUG();						\
@@ -81,17 +73,16 @@
 })
 
 #define arch_xchg_relaxed(ptr, x)					\
-	_arch_xchg(ptr, x, "", "", "", "", "")
+	_arch_xchg(ptr, x, "", "")
 
 #define arch_xchg_acquire(ptr, x)					\
-	_arch_xchg(ptr, x, "", "", "",					\
-		   RISCV_ACQUIRE_BARRIER, RISCV_ACQUIRE_BARRIER)
+	_arch_xchg(ptr, x, "", RISCV_ACQUIRE_BARRIER)
 
 #define arch_xchg_release(ptr, x)					\
-	_arch_xchg(ptr, x, "", "", RISCV_RELEASE_BARRIER, "", "")
+	_arch_xchg(ptr, x, RISCV_RELEASE_BARRIER, "")
 
 #define arch_xchg(ptr, x)						\
-	_arch_xchg(ptr, x, ".rl", ".aqrl", "", RISCV_FULL_BARRIER, "")
+	_arch_xchg(ptr, x, RISCV_RELEASE_BARRIER, RISCV_FULL_BARRIER)
 
 #define xchg32(ptr, x)							\
 ({									\
@@ -110,10 +101,7 @@
  * store NEW in MEM.  Return the initial value in MEM.  Success is
  * indicated by comparing RETURN with OLD.
  */
-#define __arch_cmpxchg_masked(sc_sfx, cas_sfx,				\
-			      sc_prepend, sc_append,			\
-			      cas_prepend, cas_append,			\
-			      r, p, o, n)				\
+#define __arch_cmpxchg_masked(prepend, append, r, p, o, n)		\
 ({									\
 	u32 *__ptr32b = (u32 *)((ulong)(p) & ~0x3);			\
 	ulong __s = ((ulong)(p) & (0x4 - sizeof(*p))) * BITS_PER_BYTE;	\
@@ -125,15 +113,16 @@
 	ulong __rc;							\
 									\
 	__asm__ __volatile__ (						\
-		sc_prepend						\
+		prepend							\
 		"0:	lr.w %0, %2\n"					\
 		"	and  %1, %0, %z5\n"				\
-		"	bne  %1, %z3, 1f\n"				\
+		"	sub  %1, %1, %z3\n"				\
+		"	bnez %1, 1f\n"					\
 		"	and  %1, %0, %z6\n"				\
 		"	or   %1, %1, %z4\n"				\
-		"	sc.w" sc_sfx " %1, %1, %2\n"			\
+		"	sc.w %1, %1, %2\n"				\
 		"	bnez %1, 0b\n"					\
-		sc_append						\
+		append							\
 		"1:\n"							\
 		: "=&r" (__retx), "=&r" (__rc), "+A" (*(__ptr32b))	\
 		: "rJ" ((long)__oldx), "rJ" (__newx),			\
@@ -143,29 +132,25 @@
 	r = (__typeof__(*(p)))((__retx & __mask) >> __s);		\
 })
 
-#define __arch_cmpxchg(lr_sfx, sc_sfx, cas_sfx,				\
-		       sc_prepend, sc_append,				\
-		       cas_prepend, cas_append,				\
-		       r, p, co, o, n)					\
+#define __arch_cmpxchg(prepend, append, r, p, co, o, n)			\
 ({									\
 	register unsigned int __rc;					\
 									\
 	__asm__ __volatile__ (						\
-		sc_prepend						\
-		"0:	lr" lr_sfx " %0, %2\n"				\
-		"	bne  %0, %z3, 1f\n"				\
-		"	sc" sc_sfx " %1, %z4, %2\n"			\
+		prepend							\
+		"0:	lr.w %0, %2\n"					\
+		"	sub  %1, %0, %z3\n"				\
+		"	bnez %1, 1f\n"					\
+		"	sc.w %1, %z4, %2\n"				\
 		"	bnez %1, 0b\n"					\
-		sc_append						\
+		append							\
 		"1:\n"							\
 		: "=&r" (r), "=&r" (__rc), "+A" (*(p))			\
 		: "rJ" (co o), "rJ" (n)					\
 		: "memory");						\
 })
 
-#define _arch_cmpxchg(ptr, old, new, sc_sfx, cas_sfx,			\
-		      sc_prepend, sc_append,				\
-		      cas_prepend, cas_append)				\
+#define _arch_cmpxchg(ptr, old, new, prepend, append)			\
 ({									\
 	__typeof__(ptr) __ptr = (ptr);					\
 	__typeof__(*(__ptr)) __old = (old);				\
@@ -174,28 +159,13 @@
 									\
 	switch (sizeof(*__ptr)) {					\
 	case 1:								\
-		__arch_cmpxchg_masked(sc_sfx, ".b" cas_sfx,		\
-				      sc_prepend, sc_append,		\
-				      cas_prepend, cas_append,		\
-				      __ret, __ptr, __old, __new);	\
-		break;							\
 	case 2:								\
-		__arch_cmpxchg_masked(sc_sfx, ".h" cas_sfx,		\
-				      sc_prepend, sc_append,		\
-				      cas_prepend, cas_append,		\
-				      __ret, __ptr, __old, __new);	\
+		__arch_cmpxchg_masked(prepend, append, __ret, __ptr,	\
+				      __old, __new);			\
 		break;							\
 	case 4:								\
-		__arch_cmpxchg(".w", ".w" sc_sfx, ".w" cas_sfx,		\
-			       sc_prepend, sc_append,			\
-			       cas_prepend, cas_append,			\
-			       __ret, __ptr, (long)(int)(long), __old, __new);	\
-		break;							\
-	case 8:								\
-		__arch_cmpxchg(".d", ".d" sc_sfx, ".d" cas_sfx,		\
-			       sc_prepend, sc_append,			\
-			       cas_prepend, cas_append,			\
-			       __ret, __ptr, /**/, __old, __new);	\
+		__arch_cmpxchg(prepend, append, __ret, __ptr,		\
+			       (long)(int)(long), __old, __new);	\
 		break;							\
 	default:							\
 		BUILD_BUG();						\
@@ -203,72 +173,20 @@
 	(__typeof__(*(__ptr)))__ret;					\
 })
 
-/*
- * These macros are here to improve the readability of the arch_cmpxchg_XXX()
- * macros.
- */
-#define SC_SFX(x)	x
-#define CAS_SFX(x)	x
-#define SC_PREPEND(x)	x
-#define SC_APPEND(x)	x
-#define CAS_PREPEND(x)	x
-#define CAS_APPEND(x)	x
-
 #define arch_cmpxchg_relaxed(ptr, o, n)					\
-	_arch_cmpxchg((ptr), (o), (n),					\
-		      SC_SFX(""), CAS_SFX(""),				\
-		      SC_PREPEND(""), SC_APPEND(""),			\
-		      CAS_PREPEND(""), CAS_APPEND(""))
+	_arch_cmpxchg((ptr), (o), (n), "", "")
 
 #define arch_cmpxchg_acquire(ptr, o, n)					\
-	_arch_cmpxchg((ptr), (o), (n),					\
-		      SC_SFX(""), CAS_SFX(""),				\
-		      SC_PREPEND(""), SC_APPEND(RISCV_ACQUIRE_BARRIER),	\
-		      CAS_PREPEND(""), CAS_APPEND(RISCV_ACQUIRE_BARRIER))
+	_arch_cmpxchg((ptr), (o), (n), "", RISCV_ACQUIRE_BARRIER)
 
 #define arch_cmpxchg_release(ptr, o, n)					\
-	_arch_cmpxchg((ptr), (o), (n),					\
-		      SC_SFX(""), CAS_SFX(""),				\
-		      SC_PREPEND(RISCV_RELEASE_BARRIER), SC_APPEND(""),	\
-		      CAS_PREPEND(RISCV_RELEASE_BARRIER), CAS_APPEND(""))
+	_arch_cmpxchg((ptr), (o), (n), RISCV_RELEASE_BARRIER, "")
 
 #define arch_cmpxchg(ptr, o, n)						\
-	_arch_cmpxchg((ptr), (o), (n),					\
-		      SC_SFX(".rl"), CAS_SFX(".aqrl"),			\
-		      SC_PREPEND(""), SC_APPEND(RISCV_FULL_BARRIER),	\
-		      CAS_PREPEND(""), CAS_APPEND(""))
+	_arch_cmpxchg((ptr), (o), (n), RISCV_RELEASE_BARRIER, 		\
+		      RISCV_FULL_BARRIER)
 
 #define arch_cmpxchg_local(ptr, o, n)					\
 	arch_cmpxchg_relaxed((ptr), (o), (n))
-
-#define arch_cmpxchg64(ptr, o, n)					\
-({									\
-	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
-	arch_cmpxchg((ptr), (o), (n));					\
-})
-
-#define arch_cmpxchg64_local(ptr, o, n)					\
-({									\
-	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
-	arch_cmpxchg_relaxed((ptr), (o), (n));				\
-})
-
-#define arch_cmpxchg64_relaxed(ptr, o, n)				\
-({									\
-	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
-	arch_cmpxchg_relaxed((ptr), (o), (n));				\
-})
-
-#define arch_cmpxchg64_acquire(ptr, o, n)				\
-({									\
-	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
-	arch_cmpxchg_acquire((ptr), (o), (n));				\
-})
-
-#define arch_cmpxchg64_release(ptr, o, n)				\
-({									\
-	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
-	arch_cmpxchg_release((ptr), (o), (n));				\
-})
 
 #endif /* _ASM_RISCV_CMPXCHG_H */

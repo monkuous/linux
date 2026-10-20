@@ -48,10 +48,10 @@
  * sufficient to ensure this works sanely on controllers that support I/O
  * writes.
  */
-#define __io_pbr()	RISCV_FENCE(io, i)
-#define __io_par(v)	RISCV_FENCE(i, ior)
-#define __io_pbw()	RISCV_FENCE(iow, o)
-#define __io_paw()	RISCV_FENCE(o, io)
+#define __io_pbr()	({ asm volatile("fence io, i" ::: "memory"); })
+#define __io_par(v)	({ asm volatile("fence i, ior" ::: "memory"); })
+#define __io_pbw()	({ asm volatile("fence iow, o" ::: "memory"); })
+#define __io_paw()	({ asm volatile("fence o, io" ::: "memory"); })
 
 /*
  * Accesses from a single hart to a single I/O address must be ordered.  This

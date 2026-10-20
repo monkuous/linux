@@ -103,8 +103,8 @@ static inline u32 __raw_readl(const volatile void __iomem *addr)
  * doesn't define any ordering between the memory space and the I/O space.
  */
 #define __io_br()	do {} while (0)
-#define __io_ar(v)	RISCV_FENCE(i, ir)
-#define __io_bw()	RISCV_FENCE(w, o)
+#define __io_ar(v)	({ asm volatile("fence i, ir" ::: "memory"); })
+#define __io_bw()	({ asm volatile("fence w, o" ::: "memory"); })
 #define __io_aw()	mmiowb_set_pending()
 
 #define readb(c)	({ u8  __v; __io_br(); __v = readb_cpu(c); __io_ar(__v); __v; })

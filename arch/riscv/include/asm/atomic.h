@@ -32,19 +32,23 @@ static __always_inline void arch_atomic_set(atomic_t *v, int i)
  * have the AQ or RL bits set.  These don't return anything, so there's only
  * one version to worry about.
  */
-#define ATOMIC_OP(op, asm_op, I, asm_type, c_type, prefix)		\
+#define ATOMIC_OP(op, asm_op, I, c_type, prefix)			\
 static __always_inline							\
 void arch_atomic##prefix##_##op(c_type i, atomic##prefix##_t *v)	\
 {									\
+	register c_type tmp;						\
 	__asm__ __volatile__ (						\
-		"	amo" #asm_op "." #asm_type " zero, %1, %0"	\
-		: "+A" (v->counter)					\
-		: "r" (I)						\
+		"0:	lr.w %0, %1\n"					\
+		"	" #asm_op "%i2 %0, %0, %2\n"			\
+		"       sc.w %0, %0, %1\n"				\
+		"	bnez %0, 0b\n"					\
+		: "=&r" (tmp), "+A" (v->counter)			\
+		: "Ir" (I)						\
 		: "memory");						\
 }									\
 
 #define ATOMIC_OPS(op, asm_op, I)					\
-        ATOMIC_OP (op, asm_op, I, w, int,   )
+        ATOMIC_OP (op, asm_op, I, int,   )
 
 ATOMIC_OPS(add, add,  i)
 ATOMIC_OPS(sub, add, -i)
@@ -60,32 +64,40 @@ ATOMIC_OPS(xor, xor,  i)
  * There's two flavors of these: the arithmetic ops have both fetch and return
  * versions, while the logical ops only have fetch versions.
  */
-#define ATOMIC_FETCH_OP(op, asm_op, I, asm_type, c_type, prefix)	\
+#define ATOMIC_FETCH_OP(op, asm_op, I, c_type, prefix)			\
 static __always_inline							\
 c_type arch_atomic##prefix##_fetch_##op##_relaxed(c_type i,		\
 					     atomic##prefix##_t *v)	\
 {									\
-	register c_type ret;						\
+	register c_type ret, tmp;					\
 	__asm__ __volatile__ (						\
-		"	amo" #asm_op "." #asm_type " %1, %2, %0"	\
-		: "+A" (v->counter), "=r" (ret)				\
-		: "r" (I)						\
+		"0:	lr.w %1, %2\n"					\
+		"	" #asm_op "%i3 %0, %1, %3\n"			\
+		"       sc.w %0, %0, %2\n"				\
+		"	bnez %0, 0b\n"					\
+		: "=&r" (tmp), "=&r" (ret), "+A" (v->counter)		\
+		: "Ir" (I)						\
 		: "memory");						\
 	return ret;							\
 }									\
 static __always_inline							\
 c_type arch_atomic##prefix##_fetch_##op(c_type i, atomic##prefix##_t *v)	\
 {									\
-	register c_type ret;						\
+	register c_type ret, tmp;					\
 	__asm__ __volatile__ (						\
-		"	amo" #asm_op "." #asm_type ".aqrl  %1, %2, %0"	\
-		: "+A" (v->counter), "=r" (ret)				\
-		: "r" (I)						\
+		RISCV_RELEASE_BARRIER					\
+		"0:	lr.w %1, %2\n"					\
+		"	" #asm_op "%i3 %0, %1, %3\n"			\
+		"       sc.w %0, %0, %2\n"				\
+		"	bnez %0, 0b\n"					\
+		RISCV_ACQUIRE_BARRIER					\
+		: "=&r" (tmp), "=&r" (ret), "+A" (v->counter)		\
+		: "Ir" (I)						\
 		: "memory");						\
 	return ret;							\
 }
 
-#define ATOMIC_OP_RETURN(op, asm_op, c_op, I, asm_type, c_type, prefix)	\
+#define ATOMIC_OP_RETURN(op, asm_op, c_op, I, c_type, prefix)		\
 static __always_inline							\
 c_type arch_atomic##prefix##_##op##_return_relaxed(c_type i,		\
 					      atomic##prefix##_t *v)	\
@@ -99,8 +111,8 @@ c_type arch_atomic##prefix##_##op##_return(c_type i, atomic##prefix##_t *v)	\
 }
 
 #define ATOMIC_OPS(op, asm_op, c_op, I)					\
-        ATOMIC_FETCH_OP( op, asm_op,       I, w, int,   )		\
-        ATOMIC_OP_RETURN(op, asm_op, c_op, I, w, int,   )
+        ATOMIC_FETCH_OP( op, asm_op,       I, int,   )			\
+        ATOMIC_OP_RETURN(op, asm_op, c_op, I, int,   )
 
 ATOMIC_OPS(add, add, +,  i)
 ATOMIC_OPS(sub, add, +, -i)
@@ -118,7 +130,7 @@ ATOMIC_OPS(sub, add, +, -i)
 #undef ATOMIC_OPS
 
 #define ATOMIC_OPS(op, asm_op, I)					\
-        ATOMIC_FETCH_OP(op, asm_op, I, w, int,   )
+        ATOMIC_FETCH_OP(op, asm_op, I, int,   )
 
 ATOMIC_OPS(and, and, i)
 ATOMIC_OPS( or,  or, i)
@@ -136,13 +148,15 @@ ATOMIC_OPS(xor, xor, i)
 #undef ATOMIC_FETCH_OP
 #undef ATOMIC_OP_RETURN
 
-#define _arch_atomic_fetch_add_unless(_prev, _rc, counter, _a, _u, sfx)	\
+#define _arch_atomic_fetch_add_unless(_prev, _rc, counter, _a, _u)	\
 ({									\
 	__asm__ __volatile__ (						\
-		"0:	lr." sfx "     %[p],  %[c]\n"			\
-		"	beq	       %[p],  %[u], 1f\n"		\
+		RISCV_RELEASE_BARRIER					\
+		"0:	lr.w           %[p],  %[c]\n"			\
+		"	sub	       %[rc], %[p], %[u]\n"		\
+		"	beqz	       %[rc], 1f\n"			\
 		"	add            %[rc], %[p], %[a]\n"		\
-		"	sc." sfx ".rl  %[rc], %[rc], %[c]\n"		\
+		"	sc.w           %[rc], %[rc], %[c]\n"		\
 		"	bnez           %[rc], 0b\n"			\
 		RISCV_FULL_BARRIER					\
 		"1:\n"							\
@@ -156,19 +170,20 @@ static __always_inline int arch_atomic_fetch_add_unless(atomic_t *v, int a, int 
 {
        int prev, rc;
 
-	_arch_atomic_fetch_add_unless(prev, rc, v->counter, a, u, "w");
+	_arch_atomic_fetch_add_unless(prev, rc, v->counter, a, u);
 
 	return prev;
 }
 #define arch_atomic_fetch_add_unless arch_atomic_fetch_add_unless
 
-#define _arch_atomic_inc_unless_negative(_prev, _rc, counter, sfx)	\
+#define _arch_atomic_inc_unless_negative(_prev, _rc, counter)		\
 ({									\
 	__asm__ __volatile__ (						\
-		"0:	lr." sfx "      %[p],  %[c]\n"			\
+		RISCV_RELEASE_BARRIER					\
+		"0:	lr.w            %[p],  %[c]\n"			\
 		"	bltz            %[p],  1f\n"			\
 		"	addi            %[rc], %[p], 1\n"		\
-		"	sc." sfx ".rl   %[rc], %[rc], %[c]\n"		\
+		"	sc.w            %[rc], %[rc], %[c]\n"		\
 		"	bnez            %[rc], 0b\n"			\
 		RISCV_FULL_BARRIER					\
 		"1:\n"							\
@@ -181,20 +196,21 @@ static __always_inline bool arch_atomic_inc_unless_negative(atomic_t *v)
 {
 	int prev, rc;
 
-	_arch_atomic_inc_unless_negative(prev, rc, v->counter, "w");
+	_arch_atomic_inc_unless_negative(prev, rc, v->counter);
 
 	return !(prev < 0);
 }
 
 #define arch_atomic_inc_unless_negative arch_atomic_inc_unless_negative
 
-#define _arch_atomic_dec_unless_positive(_prev, _rc, counter, sfx)	\
+#define _arch_atomic_dec_unless_positive(_prev, _rc, counter)		\
 ({									\
 	__asm__ __volatile__ (						\
-		"0:	lr." sfx "      %[p],  %[c]\n"			\
+		RISCV_RELEASE_BARRIER					\
+		"0:	lr.w            %[p],  %[c]\n"			\
 		"	bgtz            %[p],  1f\n"			\
 		"	addi            %[rc], %[p], -1\n"		\
-		"	sc." sfx ".rl   %[rc], %[rc], %[c]\n"		\
+		"	sc.w            %[rc], %[rc], %[c]\n"		\
 		"	bnez            %[rc], 0b\n"			\
 		RISCV_FULL_BARRIER					\
 		"1:\n"							\
@@ -207,20 +223,21 @@ static __always_inline bool arch_atomic_dec_unless_positive(atomic_t *v)
 {
 	int prev, rc;
 
-	_arch_atomic_dec_unless_positive(prev, rc, v->counter, "w");
+	_arch_atomic_dec_unless_positive(prev, rc, v->counter);
 
 	return !(prev > 0);
 }
 
 #define arch_atomic_dec_unless_positive arch_atomic_dec_unless_positive
 
-#define _arch_atomic_dec_if_positive(_prev, _rc, counter, sfx)		\
+#define _arch_atomic_dec_if_positive(_prev, _rc, counter)		\
 ({									\
 	__asm__ __volatile__ (						\
-		"0:	lr." sfx "     %[p],  %[c]\n"			\
+		RISCV_RELEASE_BARRIER					\
+		"0:	lr.w           %[p],  %[c]\n"			\
 		"	addi           %[rc], %[p], -1\n"		\
 		"	bltz           %[rc], 1f\n"			\
-		"	sc." sfx ".rl  %[rc], %[rc], %[c]\n"		\
+		"	sc.w           %[rc], %[rc], %[c]\n"		\
 		"	bnez           %[rc], 0b\n"			\
 		RISCV_FULL_BARRIER					\
 		"1:\n"							\
@@ -233,7 +250,7 @@ static __always_inline int arch_atomic_dec_if_positive(atomic_t *v)
 {
        int prev, rc;
 
-	_arch_atomic_dec_if_positive(prev, rc, v->counter, "w");
+	_arch_atomic_dec_if_positive(prev, rc, v->counter);
 
 	return prev - 1;
 }

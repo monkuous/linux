@@ -31,7 +31,7 @@ ifeq ($(CONFIG_LTO_CLANG),y)
 endif
 
 # ISA string setting
-riscv-march-y				:= rv32ima
+riscv-march-y				:= rv32im_zalrsc
 
 ifdef CONFIG_TOOLCHAIN_NEEDS_OLD_ISA_SPEC
 KBUILD_CFLAGS += -Wa,-misa-spec=2.2
