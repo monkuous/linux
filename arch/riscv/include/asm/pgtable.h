@@ -27,8 +27,8 @@
 #define KERN_VIRT_SIZE          ((PTRS_PER_PGD / 2 * PGDIR_SIZE) / 2)
 
 #define VMALLOC_SIZE     (KERN_VIRT_SIZE >> 1)
-#define VMALLOC_END      PAGE_OFFSET
-#define VMALLOC_START    (PAGE_OFFSET - VMALLOC_SIZE)
+#define VMALLOC_END      PGTABLE_START
+#define VMALLOC_START    (VMALLOC_END - VMALLOC_SIZE)
 
 #define MODULES_VADDR		VMALLOC_START
 #define MODULES_END		VMALLOC_END
@@ -112,7 +112,6 @@ extern struct pt_alloc_ops pt_ops __meminitdata;
 #define PAGE_KERNEL_IO		__pgprot(_PAGE_IOREMAP)
 
 extern pgd_t swapper_pg_dir[];
-extern pgd_t trampoline_pg_dir[];
 extern pgd_t early_pg_dir[];
 
 static inline int pmd_present(pmd_t pmd)
@@ -608,6 +607,7 @@ extern uintptr_t _dtb_early_pa;
 #define dtb_early_va	_dtb_early_va
 #define dtb_early_pa	_dtb_early_pa
 
+void xr17032_switch_mm(unsigned long pfn, unsigned long asid);
 void paging_init(void);
 void misc_mem_init(void);
 

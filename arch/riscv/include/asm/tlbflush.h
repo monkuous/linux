@@ -40,6 +40,11 @@ static inline void local_flush_tlb_page(unsigned long addr)
 	unsigned long vpn = (addr >> PAGE_SHIFT) & TBCTRL_VPN_MASK;
 	csr_write(CSR_ITBCTRL, (vpn << TBCTRL_VPN_SHIFT) | TBCTRL_FLUSH_ONE);
 	csr_write(CSR_DTBCTRL, (vpn << TBCTRL_VPN_SHIFT) | TBCTRL_FLUSH_ONE);
+
+	addr = PGTABLE_START | ((addr >> PAGE_SHIFT) << 2);
+	vpn = (addr >> PAGE_SHIFT) & TBCTRL_VPN_MASK;
+	csr_write(CSR_ITBCTRL, (vpn << TBCTRL_VPN_SHIFT) | TBCTRL_FLUSH_ONE);
+	csr_write(CSR_DTBCTRL, (vpn << TBCTRL_VPN_SHIFT) | TBCTRL_FLUSH_ONE);
 }
 
 static inline void local_flush_tlb_page_asid(unsigned long addr,

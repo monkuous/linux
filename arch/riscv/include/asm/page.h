@@ -21,6 +21,11 @@
  */
 #define PAGE_OFFSET		_AC(0xc0000000, UL)
 
+#define PGTABLE_SIZE	 0x400000
+#define PGTABLE_END	 PAGE_OFFSET
+#define PGTABLE_START	 (PGTABLE_END - PGTABLE_SIZE)
+#define PGDIR_START	 (PGTABLE_START | ((PGTABLE_START >> PAGE_SHIFT) << 2))
+
 #ifndef __ASSEMBLER__
 
 #define clear_page(pgaddr)			memset((pgaddr), 0, PAGE_SIZE)

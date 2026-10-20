@@ -26,8 +26,8 @@ SYM_CODE_START(_start)
 	/* reserved */
 	.word 0
 	.balign 8
-	/* Image load offset(4MB) from start of RAM */
-	.dword 0x400000
+	/* Image load offset from start of RAM */
+	.dword 0
 	/* Effective size of kernel image */
 	.dword _end - _start
 	.dword __HEAD_FLAGS
@@ -48,40 +48,62 @@ relocate_enable_mmu:
 	sub a1, a1, a2
 	add ra, ra, a1
 
-	/* Compute satp for kernel page tables, but don't load it yet */
-	srl a2, a0, PAGE_SHIFT
+	/* Flush TBs */
+	addi t0, zero, TBCTRL_FLUSH_ALL
+	csrw CSR_ITBCTRL, t0
+	csrw CSR_DTBCTRL, t0
 
-	/* Load trampoline page directory */
-	la a0, trampoline_pg_dir
-	srl a0, a0, PAGE_SHIFT
-	li t0, RS_M
-	li t1, TBCTRL_FLUSH_ALL
-	csrw CSR_ITBCTRL, t1
-	csrw CSR_DTBCTRL, t1
-	csrw CSR_DTBADDR, a0
-	csrw CSR_RS, t0
+	/* Set up exception block */
+1:	auipc t0, %pcrel_hi(exception_block)
+	addi t0, t0, %pcrel_lo(1b)
+	add t1, t0, a1
+	csrw CSR_EB, t1
 
-	/* Start using proper virtual addresses for pc */
-	la t0, 1f
-	add t0, t0, a1
-	jr t0
+	/* Set up wired ITB entry for exception block */
+	srli t0, t0, PAGE_SHIFT - 5
+	srli t1, t1, PAGE_SHIFT
+	ori t0, t0, 0x15
+	csrw CSR_ITBINDEX, zero
+	csrw CSR_ITBTAG, t1
+	csrw CSR_ITBPTE, t0
+
+	/* Set up wired ITB entry for head page */
+1:	auipc t0, %pcrel_hi(_start)
+	addi t0, t0, %pcrel_lo(1b)
+	add t1, t0, a1
+	srli t0, t0, PAGE_SHIFT - 5
+	srli t1, t1, PAGE_SHIFT
+	ori t0, t0, 0x15
+	csrw CSR_ITBTAG, t1
+	csrw CSR_ITBPTE, t0
+
+	/* Set up wired DTB entry for page directory */
+	li t0, PGDIR_START >> 12
+	srli t2, a0, PAGE_SHIFT
+	slli t1, t2, 5
+	ori t1, t1, 5
+	csrw CSR_DTBINDEX, zero
+	csrw CSR_DTBTAG, t0
+	csrw CSR_DTBPTE, t1
+	csrw CSR_SCRATCH2, t2
+
+	/* Enable paging */
+	addi t0, zero, TBINDEX_NUM_WIRED
+	li t1, PGTABLE_START
+1:	auipc t2, %pcrel_hi(1f)
+	addi t2, t2, %pcrel_lo(1b)
+	add t2, t2, a1
+	addi t3, zero, RS_PM
+	csrw CSR_ITBINDEX, t0
+	csrw CSR_DTBINDEX, t0
+	csrw CSR_ITBADDR, t1
+	csrw CSR_DTBADDR, t1
+	csrw CSR_EPC, t2
+	csrw CSR_RS, t3
+	sret
 1:
 	/* Reload the global pointer */
 	load_global_pointer
-
-	/* Set trap vector */
-	la t0, exception_block
-	csrw CSR_EB, t0
-
-	/*
-	 * Switch to kernel page tables.  A full fence is necessary in order to
-	 * avoid using the trampoline translations, which are only correct for
-	 * the first superpage.  Fetching the fence is guaranteed to work
-	 * because that first superpage is translated the same way.
-	 */
-	csrw CSR_DTBADDR, a2
-	csrw CSR_ITBCTRL, t1
-	csrw CSR_DTBCTRL, t1
 
 	ret
 SYM_CODE_END(_start)
@@ -228,3 +250,37 @@ SYM_CODE_START(_start_kernel)
 	wfi
 	j .Lsecondary_park
 SYM_CODE_END(_start_kernel)
+
+SYM_FUNC_START(xr17032_switch_mm)
+	/* Disable interrupts */
+	csrr t0, CSR_RS
+	addi t1, zero, -(RS_I + 1)
+	and t1, t0, t1
+	csrw CSR_RS, t1
+
+	/* Compute tbtag value */
+	li t1, PGDIR_START >> 12
+	slli t2, a1, TBTAG_ASID_SHIFT
+	or t1, t1, t2
+
+	/* Compute tbpte value */
+	slli t2, a0, 5
+	ori t2, t2, 5
+
+	/* Change wired DTB entry */
+	csrr t3, CSR_DTBINDEX
+	csrw CSR_DTBINDEX, zero
+	csrw CSR_DTBTAG, t1
+	csrw CSR_DTBPTE, t2
+	csrw CSR_DTBINDEX, t3
+
+	/* Change ITB ASID */
+	csrw CSR_ITBTAG, t1
+
+	/* Set root PT PPN */
+	csrw CSR_SCRATCH2, a0
+
+	/* Restore interrupts and return */
+	csrw CSR_RS, t0
+	jalr zero, 0(ra)
+SYM_FUNC_END(xr17032_switch_mm)

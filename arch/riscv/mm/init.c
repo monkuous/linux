@@ -196,7 +196,6 @@ static void __init setup_bootmem(void)
 struct pt_alloc_ops pt_ops __meminitdata;
 
 pgd_t swapper_pg_dir[PTRS_PER_PGD] __page_aligned_bss;
-pgd_t trampoline_pg_dir[PTRS_PER_PGD] __page_aligned_bss;
 static pte_t fixmap_pte[PTRS_PER_PTE] __page_aligned_bss;
 static pte_t fdt_pte[PTRS_PER_PTE] __page_aligned_bss;
 
@@ -456,12 +455,6 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	idx = pgd_index(FIXADDR_START);
 	early_pg_dir[idx] = pfn_pgd(PFN_DOWN(fixmap_pgd_next), PAGE_TABLE);
 
-	/* Setup trampoline PTEs */
-	create_pgd_mapping(trampoline_pg_dir, kernel_map.phys_addr,
-			   kernel_map.phys_addr, PAGE_KERNEL_EXEC);
-	create_pgd_mapping(trampoline_pg_dir, KERNEL_LINK_ADDR,
-			   kernel_map.phys_addr, PAGE_KERNEL_EXEC);
-
 	/*
 	 * Setup early PTEs covering entire kernel which will allow
 	 * us to reach paging_init(). We map all memory banks later
@@ -577,7 +570,7 @@ static void __init setup_vm_final(void)
 	clear_fixmap(FIX_PMD);
 
 	/* Move to swapper page table */
-	csr_write(CSR_DTBADDR, PFN_DOWN(__pa_symbol(swapper_pg_dir)));
+	xr17032_switch_mm(PFN_DOWN(__pa_symbol(swapper_pg_dir)), 0);
 	local_flush_tlb_all();
 
 	pt_ops_set_late();

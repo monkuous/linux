@@ -95,8 +95,24 @@ trap_handler 10, trap10 do_trap_unknown
 trap_handler 11, trap11 do_trap_unknown
 trap_handler 12, load_page_fault do_page_fault
 trap_handler 13, store_page_fault do_page_fault
-trap_handler 14, itb_miss do_trap_unknown
-trap_handler 15, dtb_miss do_trap_unknown
+
+.balign 256
+SYM_CODE_START_NOALIGN(entry_itb_miss)
+	csrr zero, CSR_ITBADDR
+	lw zero, (zero)
+	csrw CSR_ITBPTE, zero
+	sret
+SYM_CODE_END(entry_itb_miss)
+ASM_NOKPROBE(entry_itb_miss)
+
+.balign 256
+SYM_CODE_START_NOALIGN(entry_dtb_miss)
+	csrr zero, CSR_DTBADDR
+	lw zero, (zero)
+	csrw CSR_DTBPTE, zero
+	sret
+SYM_CODE_END(entry_dtb_miss)
+ASM_NOKPROBE(entry_dtb_miss)
 
 SYM_CODE_END(exception_block)
 ASM_NOKPROBE(exception_block)
