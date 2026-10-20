@@ -102,7 +102,7 @@
 ({								\
 	unsigned long __v = (unsigned long)(val);		\
 	__asm__ __volatile__ ("csrw " __ASM_STR(csr) ", %0"	\
-			      : : "rK" (__v)			\
+			      : : "r" (__v)			\
 			      : "memory");			\
 })
 
