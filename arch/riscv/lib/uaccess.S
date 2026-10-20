@@ -2,7 +2,6 @@
 #include <linux/export.h>
 #include <asm/asm.h>
 #include <asm/asm-extable.h>
-#include <asm/csr.h>
 
 	.macro fixup op reg addr lbl
 100:
@@ -11,24 +10,6 @@
 	.endm
 
 SYM_FUNC_START(__asm_copy_to_user)
-	/* Enable access to user memory */
-	li	t6, SR_SUM
-	csrs 	CSR_STATUS, t6
-	mv 	t6, ra
-
-	call 	__asm_copy_to_user_sum_enabled
-
-	/* Disable access to user memory */
-	mv 	ra, t6
-	li 	t6, SR_SUM
-	csrc 	CSR_STATUS, t6
-	ret
-SYM_FUNC_END(__asm_copy_to_user)
-EXPORT_SYMBOL(__asm_copy_to_user)
-SYM_FUNC_ALIAS(__asm_copy_from_user, __asm_copy_to_user)
-EXPORT_SYMBOL(__asm_copy_from_user)
-
-SYM_FUNC_START(__asm_copy_to_user_sum_enabled)
 	/*
 	 * Save the terminal address which will be used to compute the number
 	 * of bytes copied in case of a fixup exception.
@@ -186,17 +167,12 @@ SYM_FUNC_START(__asm_copy_to_user_sum_enabled)
 10:
 	sub a0, t5, a0
 	ret
-SYM_FUNC_END(__asm_copy_to_user_sum_enabled)
-SYM_FUNC_ALIAS(__asm_copy_from_user_sum_enabled, __asm_copy_to_user_sum_enabled)
-EXPORT_SYMBOL(__asm_copy_from_user_sum_enabled)
-EXPORT_SYMBOL(__asm_copy_to_user_sum_enabled)
+SYM_FUNC_END(__asm_copy_to_user)
+EXPORT_SYMBOL(__asm_copy_to_user)
+SYM_FUNC_ALIAS(__asm_copy_from_user, __asm_copy_to_user)
+EXPORT_SYMBOL(__asm_copy_from_user)
 
 SYM_FUNC_START(__clear_user)
-
-	/* Enable access to user memory */
-	li t6, SR_SUM
-	csrs CSR_STATUS, t6
-
 	add a3, a0, a1
 	addi t0, a0, SZREG-1
 	andi t1, a3, ~(SZREG-1)
@@ -216,8 +192,6 @@ SYM_FUNC_START(__clear_user)
 	bltu a0, a3, 5f
 
 3:
-	/* Disable access to user memory */
-	csrc CSR_STATUS, t6
 	li a0, 0
 	ret
 4: /* Edge case: unalignment */
@@ -233,8 +207,6 @@ SYM_FUNC_START(__clear_user)
 
 	/* Exception fixup code */
 11:
-	/* Disable access to user memory */
-	csrc CSR_STATUS, t6
 	sub a0, a3, a0
 	ret
 SYM_FUNC_END(__clear_user)

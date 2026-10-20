@@ -12,7 +12,6 @@
 
 #include <asm/processor.h>
 #include <asm/ptrace.h>
-#include <asm/csr.h>
 #include <asm/entry-common.h>
 #include <asm/hwprobe.h>
 #include <asm/insn.h>
@@ -55,7 +54,7 @@ int handle_unaligned(struct pt_regs *regs)
 	union reg_data val;
 	unsigned long epc = regs->epc;
 	unsigned long insn;
-	unsigned long addr = regs->badaddr;
+	unsigned long addr = regs->ebadaddr;
 	int shift = 0, len = 0, read = 1;
 
 	perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS, 1, regs, addr);

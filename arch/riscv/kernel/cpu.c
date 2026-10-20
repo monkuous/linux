@@ -8,7 +8,6 @@
 #include <linux/init.h>
 #include <linux/seq_file.h>
 #include <linux/of.h>
-#include <asm/csr.h>
 #include <asm/smp.h>
 #include <asm/pgtable.h>
 

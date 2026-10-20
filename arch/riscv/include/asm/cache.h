@@ -7,11 +7,13 @@
 #ifndef _ASM_RISCV_CACHE_H
 #define _ASM_RISCV_CACHE_H
 
+#include <vdso/page.h>
+
 #define L1_CACHE_SHIFT		6
 
 #define L1_CACHE_BYTES		(1 << L1_CACHE_SHIFT)
 
-#define ARCH_DMA_MINALIGN L1_CACHE_BYTES
+#define ARCH_DMA_MINALIGN PAGE_SIZE
 #define ARCH_KMALLOC_MINALIGN	(8)
 
 #ifndef __ASSEMBLER__

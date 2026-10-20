@@ -50,15 +50,16 @@ relocate_enable_mmu:
 
 	/* Compute satp for kernel page tables, but don't load it yet */
 	srl a2, a0, PAGE_SHIFT
-	li t0, SATP_MODE_32
-	or a2, a2, t0
 
 	/* Load trampoline page directory */
 	la a0, trampoline_pg_dir
 	srl a0, a0, PAGE_SHIFT
-	or a0, a0, t0
-	sfence.vma
-	csrw CSR_SATP, a0
+	li t0, RS_M
+	li t1, TBCTRL_FLUSH_ALL
+	csrw CSR_ITBCTRL, t1
+	csrw CSR_DTBCTRL, t1
+	csrw CSR_DTBADDR, a0
+	csrw CSR_RS, t0
 
 	/* Start using proper virtual addresses for pc */
 	la t0, 1f
@@ -70,7 +71,7 @@ relocate_enable_mmu:
 
 	/* Set trap vector */
 	la t0, exception_block
-	csrw CSR_TVEC, t0
+	csrw CSR_EB, t0
 
 	/*
 	 * Switch to kernel page tables.  A full fence is necessary in order to
@@ -78,13 +79,18 @@ relocate_enable_mmu:
 	 * the first superpage.  Fetching the fence is guaranteed to work
 	 * because that first superpage is translated the same way.
 	 */
-	csrw CSR_SATP, a2
-	sfence.vma
+	csrw CSR_DTBADDR, a2
+	csrw CSR_ITBCTRL, t1
+	csrw CSR_DTBCTRL, t1
 
 	ret
 SYM_CODE_END(_start)
 
 SYM_CODE_START(_start_kernel)
+	/* Reset RS. Get zero using xor so that it still works if RS.T=1 */
+	xor t0, t0, t0
+	csrw CSR_RS, t0
+
 	/* Load the global pointer */
 	load_global_pointer
 

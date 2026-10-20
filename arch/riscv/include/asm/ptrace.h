@@ -48,8 +48,8 @@ struct pt_regs {
 	unsigned long t5;
 	unsigned long t6;
 	/* Supervisor/Machine CSRs */
-	unsigned long status;
-	unsigned long badaddr;
+	unsigned long rs;
+	unsigned long ebadaddr;
 	unsigned long cause;
 	/* a0 value before the syscall */
 	unsigned long orig_a0;
@@ -60,7 +60,7 @@ struct pt_regs {
 
 #define REG_FMT "%08lx"
 
-#define user_mode(regs) (((regs)->status & SR_PP) == 0)
+#define user_mode(regs) (((regs)->rs & RS_PU) != 0)
 
 #define MAX_REG_OFFSET offsetof(struct pt_regs, orig_a0)
 
@@ -173,7 +173,7 @@ static inline unsigned long regs_get_kernel_argument(struct pt_regs *regs,
 
 static __always_inline bool regs_irqs_disabled(struct pt_regs *regs)
 {
-	return !(regs->status & SR_PIE);
+	return !(regs->rs & RS_PI);
 }
 
 #endif /* __ASSEMBLER__ */

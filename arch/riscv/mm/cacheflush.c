@@ -97,47 +97,6 @@ void flush_icache_pte(struct mm_struct *mm, pte_t pte)
 	}
 }
 
-unsigned int riscv_cbom_block_size;
-EXPORT_SYMBOL_GPL(riscv_cbom_block_size);
-
-static void __init cbo_get_block_size(struct device_node *node,
-				      const char *name, u32 *block_size,
-				      unsigned long *first_hartid)
-{
-	unsigned long hartid;
-	u32 val;
-
-	if (riscv_of_processor_hartid(node, &hartid))
-		return;
-
-	if (of_property_read_u32(node, name, &val))
-		return;
-
-	if (!*block_size) {
-		*block_size = val;
-		*first_hartid = hartid;
-	} else if (*block_size != val) {
-		pr_warn("%s mismatched between harts %lu and %lu\n",
-			name, *first_hartid, hartid);
-	}
-}
-
-void __init riscv_init_cbo_blocksizes(void)
-{
-	unsigned long cbom_hartid;
-	u32 cbom_block_size = 0;
-	struct device_node *node;
-
-	for_each_of_cpu_node(node) {
-		/* set block-size for cbom and/or cboz extension if available */
-		cbo_get_block_size(node, "riscv,cbom-block-size",
-				   &cbom_block_size, &cbom_hartid);
-	}
-
-	if (cbom_block_size)
-		riscv_cbom_block_size = cbom_block_size;
-}
-
 #ifdef CONFIG_SMP
 static void set_icache_stale_mask(void)
 {

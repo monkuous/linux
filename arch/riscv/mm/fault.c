@@ -165,7 +165,7 @@ static inline void vmalloc_fault(struct pt_regs *regs, int code, unsigned long a
 	 * of a task switch.
 	 */
 	index = pgd_index(addr);
-	pfn = csr_read(CSR_SATP) & SATP_PPN;
+	pfn = csr_read(CSR_DTBADDR) & TBTAG_VPN_MASK;
 	pgd = (pgd_t *)pfn_to_virt(pfn) + index;
 	pgd_k = init_mm.pgd + index;
 
@@ -258,7 +258,7 @@ void handle_page_fault(struct pt_regs *regs)
 	vm_fault_t fault;
 
 	cause = regs->cause;
-	addr = regs->badaddr;
+	addr = regs->ebadaddr;
 
 	tsk = current;
 	mm = tsk->mm;
@@ -301,13 +301,6 @@ void handle_page_fault(struct pt_regs *regs)
 
 	if (user_mode(regs))
 		flags |= FAULT_FLAG_USER;
-
-	if (!user_mode(regs) && addr < TASK_SIZE && unlikely(!(regs->status & SR_SUM))) {
-		if (fixup_exception(regs))
-			return;
-
-		die_kernel_fault("access to user memory without uaccess routines", addr, regs);
-	}
 
 	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, addr);
 

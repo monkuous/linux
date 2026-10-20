@@ -24,7 +24,6 @@
 
 #include <asm/asm-prototypes.h>
 #include <asm/bug.h>
-#include <asm/csr.h>
 #include <asm/processor.h>
 #include <asm/ptrace.h>
 #include <asm/syscall.h>

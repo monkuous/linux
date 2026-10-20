@@ -9,29 +9,15 @@
 #include <linux/dma-map-ops.h>
 #include <linux/mm.h>
 #include <asm/cacheflush.h>
-
-#define CMO_OP(_op, _start, _size, _cachesize)				\
-asm volatile(								\
-	"mv a0, %1\n\t"							\
-	"j 2f\n\t"							\
-	"3:\n\t"							\
-	".option push\n\t"						\
-	".option arch,+zicbom\n\t"					\
-	_op "(a0)\n\t"							\
-	".option pop\n\t"						\
-	"add a0, a0, %0\n\t"						\
-	"2:\n\t"							\
-	"bltu a0, %2, 3b\n\t"						\
-	: : "r"(_cachesize),						\
-	    "r"((unsigned long)(_start) & ~((_cachesize) - 1UL)),	\
-	    "r"((unsigned long)(_start) + (_size))			\
-	: "a0")
+#include <asm/csr.h>
 
 static inline void arch_dma_cache_inv(phys_addr_t paddr, size_t size)
 {
-	void *vaddr = phys_to_virt(paddr);
-
-	CMO_OP("cbo.inval", vaddr, size, riscv_cbom_block_size);
+	for (size_t offset = 0; offset < size; offset += PAGE_SIZE) {
+		unsigned long ppn = (paddr + offset) >> PAGE_SHIFT;
+		csr_write(CSR_DCACHECTRL, (ppn << CACHECTRL_PPN_SHIFT)
+					  | CACHECTRL_INVAL_PAGE);
+	}
 }
 
 static inline bool arch_sync_dma_cpu_needs_post_dma_flush(void)
@@ -58,20 +44,7 @@ void arch_sync_dma_for_cpu(phys_addr_t paddr, size_t size,
 	}
 }
 
-void arch_dma_prep_coherent(struct page *page, size_t size)
-{
-	void *flush_addr = page_address(page);
-
-	CMO_OP("cbo.flush", flush_addr, size, riscv_cbom_block_size);
-}
-
 void arch_setup_dma_ops(struct device *dev, bool coherent)
 {
-	WARN_TAINT(!coherent && riscv_cbom_block_size > ARCH_DMA_MINALIGN,
-		   TAINT_CPU_OUT_OF_SPEC,
-		   "%s %s: ARCH_DMA_MINALIGN smaller than riscv,cbom-block-size (%d < %d)",
-		   dev_driver_string(dev), dev_name(dev),
-		   ARCH_DMA_MINALIGN, riscv_cbom_block_size);
-
 	dev_assign_dma_coherent(dev, coherent);
 }

@@ -31,7 +31,6 @@
 #ifndef __ASSEMBLER__
 
 #include <asm/processor.h>
-#include <asm/csr.h>
 
 /*
  * low level task data that entry.S needs immediate access to

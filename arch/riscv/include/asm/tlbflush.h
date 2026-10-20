@@ -8,6 +8,7 @@
 #define _ASM_RISCV_TLBFLUSH_H
 
 #include <linux/mm_types.h>
+#include <asm/csr.h>
 #include <asm/smp.h>
 
 #define FLUSH_TLB_MAX_SIZE      ((unsigned long)-1)
@@ -20,30 +21,31 @@ static inline unsigned long get_mm_asid(struct mm_struct *mm)
 
 static inline void local_flush_tlb_all(void)
 {
-	__asm__ __volatile__ ("sfence.vma" : : : "memory");
+	csr_write(CSR_ITBCTRL, TBCTRL_FLUSH_NON_WIRED);
+	csr_write(CSR_DTBCTRL, TBCTRL_FLUSH_NON_WIRED);
 }
 
 static inline void local_flush_tlb_all_asid(unsigned long asid)
 {
-	if (asid != FLUSH_TLB_NO_ASID)
-		asm("sfence.vma x0, %0" : : "r" (asid) : "memory");
-	else
+	if (asid != FLUSH_TLB_NO_ASID){
+		csr_write(CSR_ITBCTRL, TBCTRL_FLUSH_PRIVATE);
+		csr_write(CSR_DTBCTRL, TBCTRL_FLUSH_PRIVATE);
+	} else
 		local_flush_tlb_all();
 }
 
 /* Flush one page from local TLB */
 static inline void local_flush_tlb_page(unsigned long addr)
 {
-	asm("sfence.vma %0" : : "r" (addr) : "memory");
+	unsigned long vpn = (addr >> PAGE_SHIFT) & TBCTRL_VPN_MASK;
+	csr_write(CSR_ITBCTRL, (vpn << TBCTRL_VPN_SHIFT) | TBCTRL_FLUSH_ONE);
+	csr_write(CSR_DTBCTRL, (vpn << TBCTRL_VPN_SHIFT) | TBCTRL_FLUSH_ONE);
 }
 
 static inline void local_flush_tlb_page_asid(unsigned long addr,
 					     unsigned long asid)
 {
-	if (asid != FLUSH_TLB_NO_ASID)
-		asm("sfence.vma %0, %1" : : "r" (addr), "r" (asid) : "memory");
-	else
-		local_flush_tlb_page(addr);
+	local_flush_tlb_page(addr);
 }
 
 void flush_tlb_all(void);

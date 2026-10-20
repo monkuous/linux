@@ -24,8 +24,8 @@ typedef struct {
 /* Lock the pointer masking mode because this mm is multithreaded */
 #define MM_CONTEXT_LOCK_PMLEN	0
 
-#define cntx2asid(cntx)		((cntx) & SATP_ASID_MASK)
-#define cntx2version(cntx)	((cntx) & ~SATP_ASID_MASK)
+#define cntx2asid(cntx)		((cntx) & TBTAG_ASID_MASK)
+#define cntx2version(cntx)	((cntx) & ~TBTAG_ASID_MASK)
 
 #endif /* __ASSEMBLER__ */
 

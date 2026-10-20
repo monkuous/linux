@@ -284,7 +284,6 @@ void __init setup_arch(char **cmdline_p)
 	setup_smp();
 #endif
 
-	riscv_init_cbo_blocksizes();
 	init_rt_signal_env();
 
 	static_branch_disable(&efficient_ffs_key);

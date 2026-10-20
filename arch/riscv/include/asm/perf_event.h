@@ -16,7 +16,7 @@
 	(regs)->epc = (__ip); \
 	(regs)->s0 = (unsigned long) __builtin_frame_address(0); \
 	(regs)->sp = current_stack_pointer; \
-	(regs)->status = SR_PP; \
+	(regs)->rs = RS_PM | RS_M; \
 }
 #endif
 

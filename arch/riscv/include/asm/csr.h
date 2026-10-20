@@ -10,21 +10,44 @@
 #include <linux/bits.h>
 
 /* Status register flags */
-#define SR_SIE		_AC(0x00000002, UL) /* Supervisor Interrupt Enable */
-#define SR_SPIE		_AC(0x00000020, UL) /* Previous Supervisor IE */
-#define SR_SPP		_AC(0x00000100, UL) /* Previously Supervisor */
-#define SR_SUM		_AC(0x00040000, UL) /* Supervisor User Memory Access */
+#define RS_I			_AC(0x00000002, UL) /* Interrupt enable */
+#define RS_M			_AC(0x00000004, UL) /* MMU enable */
+#define RS_PU			_AC(0x00000100, UL) /* Previously User mode */
+#define RS_PI			_AC(0x00000200, UL) /* Previous Interrupt enable */
+#define RS_PM			_AC(0x00000400, UL) /* Previous MMU enable */
 
-/* SATP flags */
-#define SATP_PPN	_AC(0x003FFFFF, UL)
-#define SATP_MODE_32	_AC(0x80000000, UL)
-#define SATP_MODE_SHIFT	31
-#define SATP_ASID_BITS	9
-#define SATP_ASID_SHIFT	22
-#define SATP_ASID_MASK	_AC(0x1FF, UL)
+/* TBCTRL flags */
+#define TBCTRL_FLUSH_ONE	_AC(0, UL)
+#define TBCTRL_FLUSH_NON_WIRED	_AC(1, UL)
+#define TBCTRL_FLUSH_PRIVATE	_AC(2, UL)
+#define TBCTRL_FLUSH_ALL	_AC(3, UL)
 
-/* Interrupt causes (minus the high bit) */
-#define IRQ_S_EXT		9
+#define TBCTRL_VPN_SHIFT	12
+#define TBCTRL_VPN_MASK		_AC(0xFFFFF, UL)
+
+/* CACHECTRL flags */
+#define CACHECTRL_LINES_SHIFT	0
+#define CACHECTRL_LINES_MASK	_AC(0xFF, UL)
+#define CACHECTRL_WAYS_SHIFT	8
+#define CACHECTRL_WAYS_MASK	_AC(0xFF, UL)
+#define CACHECTRL_LSIZE_SHIFT	16
+#define CACHECTRL_LSIZE_MASK	_AC(0xFF, UL)
+
+#define CACHECTRL_INVAL_PAGE	_AC(0, UL)
+#define CACHECTRL_INVAL_ALL	_AC(3, UL)
+
+#define CACHECTRL_PPN_SHIFT	12
+#define CACHECTRL_PPN_MASK	_AC(0xFFFFF, UL)
+
+/* TBTAG flags */
+#define TBTAG_VPN_SHIFT		0
+#define TBTAG_VPN_MASK		_AC(0xFFFFF, UL)
+#define TBTAG_ASID_BITS		12
+#define TBTAG_ASID_SHIFT	20
+#define TBTAG_ASID_MASK		_AC(0xFFF, UL)
+
+/* Special TBINDEX values */
+#define TBINDEX_NUM_WIRED	4
 
 /* Exception causes */
 #define EXC_INT			1
@@ -39,35 +62,32 @@
 #define EXC_PFW			13
 
 /* symbolic CSR names: */
-#define CSR_SSTATUS		0x100
-#define CSR_STVEC		0x105
-#define CSR_SSCRATCH		0x140
-#define CSR_SEPC		0x141
-#define CSR_SCAUSE		0x142
-#define CSR_STVAL		0x143
-#define CSR_SATP		0x180
-
-#define CSR_STATUS	CSR_SSTATUS
-#define CSR_TVEC	CSR_STVEC
-#define CSR_SCRATCH	CSR_SSCRATCH
-#define CSR_EPC		CSR_SEPC
-#define CSR_CAUSE	CSR_SCAUSE
-#define CSR_TVAL	CSR_STVAL
-
-#define SR_IE		SR_SIE
-#define SR_PIE		SR_SPIE
-#define SR_PP		SR_SPP
+#define CSR_RS			0
+#define CSR_WHAMI		1
+#define CSR_EB			5
+#define CSR_EPC			6
+#define CSR_EBADADDR		7
+#define CSR_TBMISSADDR		9
+#define CSR_TBPC		10
+#define CSR_SCRATCH0		11
+#define CSR_SCRATCH1		12
+#define CSR_SCRATCH2		13
+#define CSR_SCRATCH3		14
+#define CSR_SCRATCH4		15
+#define CSR_ITBPTE		16
+#define CSR_ITBTAG		17
+#define CSR_ITBINDEX		18
+#define CSR_ITBCTRL		19
+#define CSR_ICACHECTRL		20
+#define CSR_ITBADDR		21
+#define CSR_DTBPTE		24
+#define CSR_DTBTAG		25
+#define CSR_DTBINDEX		26
+#define CSR_DTBCTRL		27
+#define CSR_DCACHECTRL		28
+#define CSR_DTBADDR		29
 
 #ifndef __ASSEMBLER__
-
-#define csr_swap(csr, val)					\
-({								\
-	unsigned long __v = (unsigned long)(val);		\
-	__asm__ __volatile__ ("csrrw %0, " __ASM_STR(csr) ", %1"\
-			      : "=r" (__v) : "rK" (__v)		\
-			      : "memory");			\
-	__v;							\
-})
 
 #define csr_read(csr)						\
 ({								\
@@ -82,40 +102,6 @@
 ({								\
 	unsigned long __v = (unsigned long)(val);		\
 	__asm__ __volatile__ ("csrw " __ASM_STR(csr) ", %0"	\
-			      : : "rK" (__v)			\
-			      : "memory");			\
-})
-
-#define csr_read_set(csr, val)					\
-({								\
-	unsigned long __v = (unsigned long)(val);		\
-	__asm__ __volatile__ ("csrrs %0, " __ASM_STR(csr) ", %1"\
-			      : "=r" (__v) : "rK" (__v)		\
-			      : "memory");			\
-	__v;							\
-})
-
-#define csr_set(csr, val)					\
-({								\
-	unsigned long __v = (unsigned long)(val);		\
-	__asm__ __volatile__ ("csrs " __ASM_STR(csr) ", %0"	\
-			      : : "rK" (__v)			\
-			      : "memory");			\
-})
-
-#define csr_read_clear(csr, val)				\
-({								\
-	unsigned long __v = (unsigned long)(val);		\
-	__asm__ __volatile__ ("csrrc %0, " __ASM_STR(csr) ", %1"\
-			      : "=r" (__v) : "rK" (__v)		\
-			      : "memory");			\
-	__v;							\
-})
-
-#define csr_clear(csr, val)					\
-({								\
-	unsigned long __v = (unsigned long)(val);		\
-	__asm__ __volatile__ ("csrc " __ASM_STR(csr) ", %0"	\
 			      : : "rK" (__v)			\
 			      : "memory");			\
 })

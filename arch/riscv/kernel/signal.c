@@ -18,7 +18,6 @@
 #include <asm/vdso.h>
 #include <asm/signal.h>
 #include <asm/switch_to.h>
-#include <asm/csr.h>
 #include <asm/cacheflush.h>
 
 unsigned long signal_minsigstksz __ro_after_init;

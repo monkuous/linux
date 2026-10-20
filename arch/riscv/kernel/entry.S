@@ -30,16 +30,17 @@ SYM_CODE_END(entry_\name)
 ASM_NOKPROBE(entry_\name)
 .endm
 
-.macro trap_handler name func
+.macro trap_handler vec name func
 trap_handler_start \name
 	/*
 	 * If coming from userspace, preserve the user thread pointer and load
 	 * the kernel thread pointer.  If we came from the kernel, the scratch
 	 * register will contain 0, and we should continue on the current TP.
 	 */
-	csrrw tp, CSR_SCRATCH, tp
+	csrw CSR_SCRATCH1, tp
+	csrr tp, CSR_SCRATCH0
 	bnez tp, 1f
-	csrr tp, CSR_SCRATCH
+	csrr tp, CSR_SCRATCH1
 	REG_S sp, TASK_TI_KERNEL_SP(tp)
 1:
 	REG_S sp, TASK_TI_USER_SP(tp)
@@ -50,22 +51,16 @@ trap_handler_start \name
 	REG_S x5,  PT_T0(sp)
 	save_from_x6_to_x31
 
-	/*
-	 * Disable user-mode memory access as it should only be set in the
-	 * actual user copy routines.
-	 */
-	li t0, SR_SUM
-
 	REG_L s0, TASK_TI_USER_SP(tp)
-	csrrc s1, CSR_STATUS, t0
+	csrr s1, CSR_RS
 	csrr s2, CSR_EPC
-	csrr s3, CSR_TVAL
-	csrr s4, CSR_CAUSE
-	csrr s5, CSR_SCRATCH
+	csrr s3, CSR_EBADADDR
+	addi s4, zero, \vec
+	csrr s5, CSR_SCRATCH1
 	REG_S s0, PT_SP(sp)
-	REG_S s1, PT_STATUS(sp)
+	REG_S s1, PT_RS(sp)
 	REG_S s2, PT_EPC(sp)
-	REG_S s3, PT_BADADDR(sp)
+	REG_S s3, PT_EBADADDR(sp)
 	REG_S s4, PT_CAUSE(sp)
 	REG_S s5, PT_TP(sp)
 
@@ -73,7 +68,7 @@ trap_handler_start \name
 	 * Set the scratch register to 0, so that if a recursive exception
 	 * occurs, the exception vector knows it came from the kernel
 	 */
-	csrw CSR_SCRATCH, x0
+	csrw CSR_SCRATCH0, x0
 
 	/* Load the global pointer */
 	load_global_pointer
@@ -86,22 +81,22 @@ trap_handler_start \name
 trap_handler_end \name
 .endm
 
-trap_handler trap0 do_trap_unknown
-trap_handler irq do_irq
-trap_handler syscall do_trap_syscall
-trap_handler trap3 do_trap_unknown
-trap_handler bus_error do_trap_bus_error
-trap_handler nmi do_trap_unknown
-trap_handler breakpoint do_trap_break
-trap_handler invalid_insn do_trap_insn_illegal
-trap_handler privileged_insn do_trap_insn_illegal
-trap_handler unaligned do_trap_unaligned
-trap_handler trap10 do_trap_unknown
-trap_handler trap11 do_trap_unknown
-trap_handler load_page_fault do_page_fault
-trap_handler store_page_fault do_page_fault
-trap_handler itb_miss do_trap_unknown
-trap_handler dtb_miss do_trap_unknown
+trap_handler 0, trap0 do_trap_unknown
+trap_handler 1, irq do_irq
+trap_handler 2, syscall do_trap_syscall
+trap_handler 3, trap3 do_trap_unknown
+trap_handler 4, bus_error do_trap_bus_error
+trap_handler 5, nmi do_trap_unknown
+trap_handler 6, breakpoint do_trap_break
+trap_handler 7, invalid_insn do_trap_insn_illegal
+trap_handler 8, privileged_insn do_trap_insn_illegal
+trap_handler 9, unaligned do_trap_unaligned
+trap_handler 10, trap10 do_trap_unknown
+trap_handler 11, trap11 do_trap_unknown
+trap_handler 12, load_page_fault do_page_fault
+trap_handler 13, store_page_fault do_page_fault
+trap_handler 14, itb_miss do_trap_unknown
+trap_handler 15, dtb_miss do_trap_unknown
 
 SYM_CODE_END(exception_block)
 ASM_NOKPROBE(exception_block)
@@ -113,25 +108,24 @@ ASM_NOKPROBE(exception_block)
  *  - ret_from_fork
  */
 SYM_CODE_START_NOALIGN(ret_from_exception)
-	REG_L s0, PT_STATUS(sp)
-	andi s0, s0, SR_SPP
-	bnez s0, 1f
+	REG_L s0, PT_RS(sp)
+	andi t0, s0, RS_PU
+	beqz t0, 1f
 
 #ifdef CONFIG_KSTACK_ERASE
 	call	stackleak_erase_on_task_stack
 #endif
 
 	/* Save unwound kernel stack pointer in thread_info */
-	addi s0, sp, PT_SIZE_ON_STACK
-	REG_S s0, TASK_TI_KERNEL_SP(tp)
+	addi t0, sp, PT_SIZE_ON_STACK
+	REG_S t0, TASK_TI_KERNEL_SP(tp)
 
 	/*
 	 * Save TP into the scratch register , so we can find the kernel data
 	 * structures again.
 	 */
-	csrw CSR_SCRATCH, tp
+	csrw CSR_SCRATCH0, tp
 1:
-	REG_L a0, PT_STATUS(sp)
 	/*
 	 * The current load reservation is effectively part of the processor's
 	 * state, in the sense that load reservations cannot be shared between
@@ -152,7 +146,7 @@ SYM_CODE_START_NOALIGN(ret_from_exception)
 	REG_L  a2, PT_EPC(sp)
 	REG_SC x0, a2, PT_EPC(sp)
 
-	csrw CSR_STATUS, a0
+	csrw CSR_RS, s0
 	csrw CSR_EPC, a2
 
 	REG_L x1,  PT_RA(sp)
@@ -244,15 +238,7 @@ SYM_FUNC_START(__switch_to)
 	REG_S s10, TASK_THREAD_S10_RA(a3)
 	REG_S s11, TASK_THREAD_S11_RA(a3)
 
-	/* save the user space access flag */
-	csrr  s0, CSR_STATUS
-	REG_S s0, TASK_THREAD_SUM_RA(a3)
-
 	/* Restore context from next->thread */
-	REG_L s0,  TASK_THREAD_SUM_RA(a4)
-	li    s1,  SR_SUM
-	and   s0,  s0, s1
-	csrs  CSR_STATUS, s0
 	REG_L ra,  TASK_THREAD_RA_RA(a4)
 	REG_L sp,  TASK_THREAD_SP_RA(a4)
 	REG_L s0,  TASK_THREAD_S0_RA(a4)

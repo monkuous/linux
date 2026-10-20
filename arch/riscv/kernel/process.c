@@ -87,8 +87,8 @@ void __show_regs(struct pt_regs *regs)
 	pr_cont(" t5 : " REG_FMT " t6 : " REG_FMT "\n",
 		regs->t5, regs->t6);
 
-	pr_cont("status: " REG_FMT " badaddr: " REG_FMT " cause: " REG_FMT "\n",
-		regs->status, regs->badaddr, regs->cause);
+	pr_cont("rs: " REG_FMT " ebadaddr: " REG_FMT " cause: " REG_FMT "\n",
+		regs->rs, regs->ebadaddr, regs->cause);
 }
 void show_regs(struct pt_regs *regs)
 {
@@ -107,7 +107,7 @@ unsigned long arch_align_stack(unsigned long sp)
 void start_thread(struct pt_regs *regs, unsigned long pc,
 	unsigned long sp)
 {
-	regs->status = SR_PIE;
+	regs->rs = RS_PM | RS_PI | RS_PU | RS_M;
 	regs->epc = pc;
 	regs->sp = sp;
 }
@@ -154,7 +154,7 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 		/* Kernel thread */
 		memset(childregs, 0, sizeof(struct pt_regs));
 		/* Supervisor/Machine, irqs on: */
-		childregs->status = SR_PP | SR_PIE;
+		childregs->rs = RS_PM | RS_PI | RS_M;
 
 		p->thread.s[0] = (unsigned long)args->fn;
 		p->thread.s[1] = (unsigned long)args->fn_arg;

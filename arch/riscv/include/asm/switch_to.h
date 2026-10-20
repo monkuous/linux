@@ -11,7 +11,6 @@
 #include <linux/mm_types.h>
 #include <asm/processor.h>
 #include <asm/ptrace.h>
-#include <asm/csr.h>
 
 extern struct task_struct *__switch_to(struct task_struct *,
 				       struct task_struct *);

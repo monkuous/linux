@@ -7,10 +7,11 @@
 #define _ASM_RISCV_CACHEFLUSH_H
 
 #include <linux/mm.h>
+#include <asm/csr.h>
 
 static inline void local_flush_icache_all(void)
 {
-	asm volatile ("fence.i" ::: "memory");
+	csr_write(CSR_ICACHECTRL, CACHECTRL_INVAL_ALL);
 }
 
 static inline void local_flush_icache_range(unsigned long start,
@@ -61,9 +62,6 @@ static inline void flush_icache_range(unsigned long start, unsigned long end)
 {
 	flush_icache_all();
 }
-
-extern unsigned int riscv_cbom_block_size;
-void riscv_init_cbo_blocksizes(void);
 
 /*
  * Bits in sys_riscv_flush_icache()'s flags argument.

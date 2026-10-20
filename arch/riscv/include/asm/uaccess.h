@@ -22,11 +22,6 @@
 #include <asm/asm.h>
 #include <asm-generic/access_ok.h>
 
-#define __enable_user_access()							\
-	__asm__ __volatile__ ("csrs sstatus, %0" : : "r" (SR_SUM) : "memory")
-#define __disable_user_access()							\
-	__asm__ __volatile__ ("csrc sstatus, %0" : : "r" (SR_SUM) : "memory")
-
 /*
  * This is the smallest unsigned integer type that can fit a value
  * (up to 'long long')
@@ -140,15 +135,15 @@ do {								\
 } while (0)
 #endif /* CONFIG_CC_HAS_ASM_GOTO_OUTPUT */
 
-unsigned long __must_check __asm_copy_to_user_sum_enabled(void __user *to,
+unsigned long __must_check __asm_copy_to_user(void __user *to,
 	const void *from, unsigned long n);
-unsigned long __must_check __asm_copy_from_user_sum_enabled(void *to,
+unsigned long __must_check __asm_copy_from_user(void *to,
 	const void __user *from, unsigned long n);
 
 #define __get_user_nocheck(x, __gu_ptr, label)			\
 do {								\
 	if (!IS_ALIGNED((uintptr_t)__gu_ptr, sizeof(*__gu_ptr))) {	\
-		if (__asm_copy_from_user_sum_enabled(&(x), __gu_ptr, sizeof(*__gu_ptr))) \
+		if (__asm_copy_from_user(&(x), __gu_ptr, sizeof(*__gu_ptr))) \
 			goto label;				\
 		break;						\
 	}							\
@@ -210,9 +205,7 @@ __gu_failed:								\
 								\
 	__chk_user_ptr(__gu_ptr);				\
 								\
-	__enable_user_access();					\
 	__get_user_error(__gu_val, __gu_ptr, __gu_err);		\
-	__disable_user_access();				\
 								\
 	(x) = __gu_val;						\
 								\
@@ -275,7 +268,7 @@ do {								\
 do {								\
 	if (!IS_ALIGNED((uintptr_t)__gu_ptr, sizeof(*__gu_ptr))) {	\
 		__typeof__(*(__gu_ptr)) ___val = (x);		\
-		if (__asm_copy_to_user_sum_enabled(__gu_ptr, &(___val), sizeof(*__gu_ptr))) \
+		if (__asm_copy_to_user(__gu_ptr, &(___val), sizeof(*__gu_ptr))) \
 			goto label;				\
 		break;						\
 	}							\
@@ -335,9 +328,7 @@ err_label:							\
 								\
 	__chk_user_ptr(__gu_ptr);				\
 								\
-	__enable_user_access();					\
 	__put_user_error(__val, __gu_ptr, __pu_err);		\
-	__disable_user_access();				\
 								\
 	__pu_err;						\
 })
@@ -366,12 +357,6 @@ err_label:							\
 		__put_user((x), __p) :				\
 		-EFAULT;					\
 })
-
-
-unsigned long __must_check __asm_copy_to_user(void __user *to,
-	const void *from, unsigned long n);
-unsigned long __must_check __asm_copy_from_user(void *to,
-	const void __user *from, unsigned long n);
 
 static inline unsigned long
 raw_copy_from_user(void *to, const void __user *from, unsigned long n)
@@ -410,11 +395,10 @@ static __must_check __always_inline bool user_access_begin(const void __user *pt
 {
 	if (unlikely(!access_ok(ptr, len)))
 		return 0;
-	__enable_user_access();
 	return 1;
 }
 #define user_access_begin user_access_begin
-#define user_access_end __disable_user_access
+#define user_access_end() ({ })
 
 static inline unsigned long user_access_save(void) { return 0UL; }
 static inline void user_access_restore(unsigned long enabled) { }
@@ -433,11 +417,11 @@ static inline void user_access_restore(unsigned long enabled) { }
 } while (0)
 
 #define unsafe_copy_to_user(_dst, _src, _len, label)			\
-	if (__asm_copy_to_user_sum_enabled(_dst, _src, _len))		\
+	if (__asm_copy_to_user(_dst, _src, _len))			\
 		goto label;
 
 #define unsafe_copy_from_user(_dst, _src, _len, label)			\
-	if (__asm_copy_from_user_sum_enabled(_dst, _src, _len))		\
+	if (__asm_copy_from_user(_dst, _src, _len))			\
 		goto label;
 
 #endif /* _ASM_RISCV_UACCESS_H */

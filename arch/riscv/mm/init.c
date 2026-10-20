@@ -577,8 +577,7 @@ static void __init setup_vm_final(void)
 	clear_fixmap(FIX_PMD);
 
 	/* Move to swapper page table */
-	csr_write(CSR_SATP, PFN_DOWN(__pa_symbol(swapper_pg_dir))
-			    | SATP_MODE_32);
+	csr_write(CSR_DTBADDR, PFN_DOWN(__pa_symbol(swapper_pg_dir)));
 	local_flush_tlb_all();
 
 	pt_ops_set_late();

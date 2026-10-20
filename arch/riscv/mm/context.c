@@ -125,7 +125,7 @@ static unsigned long __new_context(struct mm_struct *mm)
 		goto set_asid;
 
 	/* We're out of ASIDs, so increment current_version */
-	ver = atomic_long_add_return_relaxed(BIT(SATP_ASID_BITS), &current_version);
+	ver = atomic_long_add_return_relaxed(BIT(TBTAG_ASID_BITS), &current_version);
 
 	/* Flush everything  */
 	__flush_context();
@@ -187,9 +187,8 @@ static void set_mm_asid(struct mm_struct *mm, unsigned int cpu)
 	raw_spin_unlock_irqrestore(&context_lock, flags);
 
 switch_mm_fast:
-	csr_write(CSR_SATP, virt_to_pfn(mm->pgd) |
-		  (cntx2asid(cntx) << SATP_ASID_SHIFT) |
-		  SATP_MODE_32);
+	csr_write(CSR_DTBADDR, virt_to_pfn(mm->pgd) |
+		  (cntx2asid(cntx) << TBTAG_ASID_SHIFT));
 
 	if (need_flush_tlb)
 		local_flush_tlb_all();
@@ -198,7 +197,7 @@ switch_mm_fast:
 static void set_mm_noasid(struct mm_struct *mm)
 {
 	/* Switch the page table and blindly nuke entire local TLB */
-	csr_write(CSR_SATP, virt_to_pfn(mm->pgd) | SATP_MODE_32);
+	csr_write(CSR_DTBADDR, virt_to_pfn(mm->pgd));
 	local_flush_tlb_all_asid(0);
 }
 
@@ -224,34 +223,15 @@ static inline void set_mm(struct mm_struct *prev,
 
 static int __init asids_init(void)
 {
-	unsigned long asid_bits, old;
-
-	/* Figure-out number of ASID bits in HW */
-	old = csr_read(CSR_SATP);
-	asid_bits = old | (SATP_ASID_MASK << SATP_ASID_SHIFT);
-	csr_write(CSR_SATP, asid_bits);
-	asid_bits = (csr_read(CSR_SATP) >> SATP_ASID_SHIFT)  & SATP_ASID_MASK;
-	asid_bits = fls_long(asid_bits);
-	csr_write(CSR_SATP, old);
-
-	/*
-	 * In the process of determining number of ASID bits (above)
-	 * we polluted the TLB of current HART so let's do TLB flushed
-	 * to remove unwanted TLB enteries.
-	 */
-	local_flush_tlb_all();
-
 	/* Pre-compute ASID details */
-	if (asid_bits) {
-		num_asids = 1 << asid_bits;
-	}
+	num_asids = 1UL << TBTAG_ASID_BITS;
 
 	/*
 	 * Use ASID allocator only if number of HW ASIDs are
 	 * at-least twice more than CPUs
 	 */
 	if (num_asids > (2 * num_possible_cpus())) {
-		atomic_long_set(&current_version, BIT(SATP_ASID_BITS));
+		atomic_long_set(&current_version, BIT(TBTAG_ASID_BITS));
 
 		context_asid_map = bitmap_zalloc(num_asids, GFP_KERNEL);
 		if (!context_asid_map)
@@ -262,10 +242,10 @@ static int __init asids_init(void)
 
 		static_branch_enable(&use_asid_allocator);
 
-		pr_info("ASID allocator using %lu bits (%lu entries)\n",
-			asid_bits, num_asids);
+		pr_info("ASID allocator using %d bits (%lu entries)\n",
+			TBTAG_ASID_BITS, num_asids);
 	} else {
-		pr_info("ASID allocator disabled (%lu bits)\n", asid_bits);
+		pr_info("ASID allocator disabled (%d bits)\n", TBTAG_ASID_BITS);
 	}
 
 	return 0;

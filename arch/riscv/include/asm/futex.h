@@ -17,7 +17,6 @@
 
 #define __futex_atomic_op(insn, ret, oldval, uaddr, oparg)	\
 {								\
-	__enable_user_access();					\
 	__asm__ __volatile__ (					\
 	"1:	" insn "				\n"	\
 	"2:						\n"	\
@@ -26,7 +25,6 @@
 	  [u] "+m" (*uaddr)					\
 	: [op] "Jr" (oparg)					\
 	: "memory");						\
-	__disable_user_access();				\
 }
 
 static inline int
@@ -79,7 +77,6 @@ futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 	if (!access_ok(uaddr, sizeof(u32)))
 		return -EFAULT;
 
-	__enable_user_access();
 	__asm__ __volatile__ (
 	"1:	lr.w %[v],%[u]			        \n"
 	"	bne %[v],%z[ov],3f			\n"
@@ -91,7 +88,6 @@ futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 	: [r] "+r" (ret), [v] "=&r" (val), [u] "+m" (*uaddr), [t] "=&r" (tmp)
 	: [ov] "Jr" ((long)(int)oldval), [nv] "Jr" (newval)
 	: "memory");
-	__disable_user_access();
 
 	*uval = val;
 	return ret;

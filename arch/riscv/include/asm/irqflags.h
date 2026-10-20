@@ -12,31 +12,37 @@
 /* read interrupt enabled status */
 static inline unsigned long arch_local_save_flags(void)
 {
-	return csr_read(CSR_STATUS);
+	return csr_read(CSR_RS);
 }
 
 /* unconditionally enable interrupts */
 static inline void arch_local_irq_enable(void)
 {
-	csr_set(CSR_STATUS, SR_IE);
+	unsigned long flags = csr_read(CSR_RS);
+	flags |= RS_I;
+	csr_write(CSR_RS, flags);
 }
 
 /* unconditionally disable interrupts */
 static inline void arch_local_irq_disable(void)
 {
-	csr_clear(CSR_STATUS, SR_IE);
+	unsigned long flags = csr_read(CSR_RS);
+	flags &= ~RS_I;
+	csr_write(CSR_RS, flags);
 }
 
 /* get status and disable interrupts */
 static inline unsigned long arch_local_irq_save(void)
 {
-	return csr_read_clear(CSR_STATUS, SR_IE);
+	unsigned long flags = csr_read(CSR_RS);
+	csr_write(CSR_RS, flags & ~RS_I);
+	return flags;
 }
 
 /* test flags */
 static inline int arch_irqs_disabled_flags(unsigned long flags)
 {
-	return !(flags & SR_IE);
+	return !(flags & RS_I);
 }
 
 /* test hardware interrupt enable bit */
@@ -48,7 +54,13 @@ static inline int arch_irqs_disabled(void)
 /* set interrupt enabled status */
 static inline void arch_local_irq_restore(unsigned long flags)
 {
-	csr_set(CSR_STATUS, flags & SR_IE);
+	/*
+	 * This also resets other flags in RS, but they're all either constant
+	 * across all points in the kernel that can use arch_local_irq_save()
+	 * (U, M, T), or not cared about (ECAUSE), or restored before being used
+	 * (mode stack).
+	 */
+	csr_write(CSR_RS, flags);
 }
 
 #endif /* _ASM_RISCV_IRQFLAGS_H */

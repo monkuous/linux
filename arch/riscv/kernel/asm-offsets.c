@@ -10,7 +10,6 @@
 #include <linux/sched.h>
 #include <asm/thread_info.h>
 #include <asm/ptrace.h>
-#include <asm/cpu_ops_sbi.h>
 #include <asm/stacktrace.h>
 
 void asm_offsets(void);
@@ -31,7 +30,6 @@ void asm_offsets(void)
 	OFFSET(TASK_THREAD_S9, task_struct, thread.s[9]);
 	OFFSET(TASK_THREAD_S10, task_struct, thread.s[10]);
 	OFFSET(TASK_THREAD_S11, task_struct, thread.s[11]);
-	OFFSET(TASK_THREAD_SUM, task_struct, thread.sum);
 
 	OFFSET(TASK_TI_CPU, task_struct, thread_info.cpu);
 	OFFSET(TASK_TI_PREEMPT_COUNT, task_struct, thread_info.preempt_count);
@@ -78,8 +76,8 @@ void asm_offsets(void)
 	OFFSET(PT_T6, pt_regs, t6);
 	OFFSET(PT_GP, pt_regs, gp);
 	OFFSET(PT_ORIG_A0, pt_regs, orig_a0);
-	OFFSET(PT_STATUS, pt_regs, status);
-	OFFSET(PT_BADADDR, pt_regs, badaddr);
+	OFFSET(PT_RS, pt_regs, rs);
+	OFFSET(PT_EBADADDR, pt_regs, ebadaddr);
 	OFFSET(PT_CAUSE, pt_regs, cause);
 
 	/*
@@ -143,19 +141,12 @@ void asm_offsets(void)
 		  offsetof(struct task_struct, thread.s[11])
 		- offsetof(struct task_struct, thread.ra)
 	);
-	DEFINE(TASK_THREAD_SUM_RA,
-		  offsetof(struct task_struct, thread.sum)
-		- offsetof(struct task_struct, thread.ra)
-	);
 
 	/*
 	 * We allocate a pt_regs on the stack when entering the kernel.  This
 	 * ensures the alignment is sane.
 	 */
 	DEFINE(PT_SIZE_ON_STACK, ALIGN(sizeof(struct pt_regs), STACK_ALIGN));
-
-	OFFSET(SBI_HART_BOOT_TASK_PTR_OFFSET, sbi_hart_boot_data, task_ptr);
-	OFFSET(SBI_HART_BOOT_STACK_PTR_OFFSET, sbi_hart_boot_data, stack_ptr);
 
 	DEFINE(STACKFRAME_SIZE_ON_STACK, ALIGN(sizeof(struct stackframe), STACK_ALIGN));
 	DEFINE(STACKFRAME_FP, offsetof(struct stackframe, fp) - sizeof(struct stackframe));

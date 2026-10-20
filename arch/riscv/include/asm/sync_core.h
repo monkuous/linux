@@ -2,13 +2,15 @@
 #ifndef _ASM_RISCV_SYNC_CORE_H
 #define _ASM_RISCV_SYNC_CORE_H
 
+#include <asm/csr.h>
+
 /*
  * RISC-V implements return to user-space through an xRET instruction,
  * which is not core serializing.
  */
 static inline void sync_core_before_usermode(void)
 {
-	asm volatile ("fence.i" ::: "memory");
+	csr_write(CSR_ICACHECTRL, CACHECTRL_INVAL_ALL);
 }
 
 #ifdef CONFIG_SMP

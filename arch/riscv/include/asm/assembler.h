@@ -14,7 +14,6 @@
 
 #include <asm/asm.h>
 #include <asm/asm-offsets.h>
-#include <asm/csr.h>
 
 /*
  * copy_page - copy 1 page (4KB) of data from source to destination
