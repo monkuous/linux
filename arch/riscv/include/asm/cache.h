@@ -13,17 +13,6 @@
 
 #define L1_CACHE_BYTES		(1 << L1_CACHE_SHIFT)
 
-#define ARCH_DMA_MINALIGN PAGE_SIZE
 #define ARCH_KMALLOC_MINALIGN	(8)
-
-#ifndef __ASSEMBLER__
-
-#define dma_get_cache_alignment dma_get_cache_alignment
-static inline int dma_get_cache_alignment(void)
-{
-	return ARCH_DMA_MINALIGN;
-}
-
-#endif	/* __ASSEMBLER__ */
 
 #endif /* _ASM_RISCV_CACHE_H */

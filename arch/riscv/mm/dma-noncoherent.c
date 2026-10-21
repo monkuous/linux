@@ -13,16 +13,13 @@
 
 static inline void arch_dma_cache_inv(phys_addr_t paddr, size_t size)
 {
+	size += paddr % PAGE_SIZE;
+
 	for (size_t offset = 0; offset < size; offset += PAGE_SIZE) {
 		unsigned long ppn = (paddr + offset) >> PAGE_SHIFT;
 		csr_write(CSR_DCACHECTRL, (ppn << CACHECTRL_PPN_SHIFT)
 					  | CACHECTRL_INVAL_PAGE);
 	}
-}
-
-static inline bool arch_sync_dma_cpu_needs_post_dma_flush(void)
-{
-	return true;
 }
 
 void arch_sync_dma_for_cpu(phys_addr_t paddr, size_t size,
@@ -34,9 +31,7 @@ void arch_sync_dma_for_cpu(phys_addr_t paddr, size_t size,
 
 	case DMA_FROM_DEVICE:
 	case DMA_BIDIRECTIONAL:
-		/* FROM_DEVICE invalidate needed if speculative CPU prefetch only */
-		if (arch_sync_dma_cpu_needs_post_dma_flush())
-			arch_dma_cache_inv(paddr, size);
+		arch_dma_cache_inv(paddr, size);
 		break;
 
 	default:
