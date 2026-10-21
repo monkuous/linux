@@ -4,7 +4,7 @@
 #
 # 12 June 2000, Christoph Hellwig <hch@infradead.org>
 # Rewritten to use lists instead of if-statements.
-# 
+#
 
 # needed for trace events
 ccflags-y				+= -I$(src)
@@ -39,5 +39,7 @@ obj-$(CONFIG_BLK_DEV_RUST_NULL) += rnull/
 
 obj-$(CONFIG_BLK_DEV_UBLK)			+= ublk_drv.o
 obj-$(CONFIG_BLK_DEV_ZONED_LOOP) += zloop.o
+
+obj-$(CONFIG_BLK_DEV_XRARCH)	+= xrarch_disk.o
 
 swim_mod-y	:= swim.o swim_asm.o

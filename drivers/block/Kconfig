@@ -372,4 +372,10 @@ config BLK_DEV_ZONED_LOOP
 
 	  If unsure, say N.
 
+config BLK_DEV_XRARCH
+	tristate "XR/arch disk controller support"
+	depends on BLK_DEV && OF
+	help
+	  Support for the disk controller found in XR/computer systems.
+
 endif # BLK_DEV
