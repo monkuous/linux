@@ -1798,6 +1798,13 @@ config FB_SM712
 	  called sm712fb. If you want to compile it as a module, say M
 	  here and read <file:Documentation/kbuild/modules.rst>.
 
+config FB_KINNOW
+	tristate "XR/arch Kinnow framebuffer support"
+	depends on FB && OF
+	select FB_IOMEM_HELPERS
+	help
+	  Frame buffer driver for the XR/arch Kinnow framebuffer device.
+
 source "drivers/video/fbdev/omap/Kconfig"
 source "drivers/video/fbdev/omap2/Kconfig"
 source "drivers/video/fbdev/mmp/Kconfig"
