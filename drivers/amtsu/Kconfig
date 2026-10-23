@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config AMTSU
+	tristate "XR/arch Amtsu bus driver"
+	depends on OF
+	help
+	  Enables support for the XR/arch Amtsu bus.

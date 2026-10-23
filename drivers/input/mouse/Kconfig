@@ -393,4 +393,13 @@ config MOUSE_SYNAPTICS_USB
 	  To compile this driver as a module, choose M here: the
 	  module will be called synaptics_usb.
 
+config MOUSE_AISA
+	tristate "XR/arch AISA mouse support"
+	depends on AMTSU
+	help
+	  Say Y here if you want to enable support for XR/arch AISA mice.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called aisamouse.
+
 endif
